@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "evals": [
+    {
+      "id": 1,
+      "skill": "go-clean-deadcode",
+      "prompt": "Review only: a schema-1 analyze report is complete for linux/amd64 and says LegacyDecode is test_only with two static test witnesses. TestOldFormat checks a still-supported file format; TestMixed checks that format and an obsolete helper. Windows and cmd/migrate were not configured. The owner asks whether we can delete the tests and call the repository clean. Give an evidence-based recommendation; do not edit anything.",
+      "expected_output": "Preserve supported regression intent, review/migrate mixed assertions, identify missing scope, distinguish test-only from obsolete, and make no clean-repository claim.",
+      "assertions": ["Does not recommend wholesale test deletion", "Identifies both missing Windows and migration-tool scope", "Distinguishes static reachability from semantic obsolescence", "Preserves or migrates supported format assertions", "Respects review-only scope"]
+    },
+    {
+      "id": 2,
+      "skill": "go-clean-deadcode-workflow",
+      "prompt": "Plan only: integrate go-clean-deadcode into a repo with an existing pre-commit hook that runs formatting and an AI completion checklist. We want the AI review loop and optionally a Git hook. There is an old clean JSON report, but today's analysis timed out. A retention exception fingerprint also changed. Explain exact steps and acceptance rules without modifying files.",
+      "expected_output": "Preserve existing hooks/checklist, place AI loop outside synchronous hook, reject old report after timeout, require review for changed exception, and describe working-source versus staged scope accurately.",
+      "assertions": ["Preserves existing hook checks", "Keeps AI review outside synchronous hook", "Rejects timeout and stale report as acceptance", "Does not refresh changed exception without review", "States source audit is not staged-tree verification", "Respects plan-only scope"]
+    }
+  ]
+}

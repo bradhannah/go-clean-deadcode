@@ -1,0 +1,79 @@
+# Configuration and retention exceptions
+
+The required configuration is strict JSON: unknown fields and unsupported schema
+versions fail. See `examples/sample.json` and `schemas/config-v1.schema.json`.
+
+## Modules
+
+- `path`: root-relative module directory containing `go.mod`; cannot escape root.
+- `patterns`: module-relative Go package patterns, normally `["./..."]`.
+- `entry_points`: exact import paths or module-relative directories. Each has
+  `role: "application" | "utility"` and optionally a list of configuration names.
+- `tests`: defaults to true. False intentionally removes test evidence; the report
+  retains `tests: "not_analyzed"` where applicable.
+- `library`: explicitly permits no executable roots. It does **not** protect all
+  exported symbols automatically; callers outside the project require contract
+  review and narrow retention decisions.
+- `ignored_mains`: exact package/directory `path` and a nonempty `reason`.
+
+Narrow patterns deliberately limit the analyzed package universe; use `./...` for
+whole-module audits. A selected executable outside those patterns is an error.
+Discovery inventories ordinary Go packages: the Go tool itself skips directories
+such as `testdata`, dot/underscore-prefixed directories, and build-excluded files.
+Explicit source patterns and build configurations are required where appropriate.
+
+The analyzer also scans for nested `go.mod` files (excluding hidden, vendor and
+node_modules directories). Each discovered nested module must appear in `modules`
+or in `excluded_modules` with a reason. A root `./...` is not assumed to include it.
+Exclusions appear in diagnostics. A complete scoped run does not claim acceptance
+of excluded modules or configurations.
+
+## Configurations
+
+Each specifies unique `name`, `goos`, `goarch`, `tags` and `cgo_enabled`. Discovery
+without a configuration uses the host architecture with CGO disabled. Configure
+every platform and tag combination relevant to the project; single-host results
+cannot establish cross-platform deadness. Cross-platform loading can fail when a
+dependency needs native headers/tooling; that scope is incomplete.
+
+Library contracts and plugin/native entry points need reviewed modeling; adding a
+root or excluding a module changes scope and is not a harmless report suppression.
+
+## Exceptions
+
+Exceptions match an exact symbol and finding category. Example shape:
+
+```json
+{
+  "id": "supported-legacy-api",
+  "symbol": "example.com/project/api.LegacyDecode",
+  "category": "test_only",
+  "fingerprint": "<copy the 64-character fingerprint from the reviewed symbol>",
+  "reason": "Supported compatibility API used by an external consumer.",
+  "approved_by": "repository owner",
+  "review_after": "2027-01-15"
+}
+```
+
+The example placeholder is intentionally not a usable exception. Copy the actual
+reviewed fingerprint. The UTC review date is inclusive. Missing targets, changed
+declarations, expired dates and duplicate matching exceptions remain visible and
+prevent exit 0. Exceptions do not modify graph roots, erase evidence or make code
+appear runtime-reachable. `approved_by` records the declared reviewer; it is not a
+cryptographic approval or authorization system.
+
+Do not invent approvals, mass-accept a baseline, or refresh fingerprints merely
+to pass. Review why the contract is retained and whether useful tests should be
+migrated instead of discarded.
+
+## File behavior
+
+Target source is read-only. Configurations can be external. `--output`,
+`--cpuprofile`, and `--cache-dir` must resolve outside the target; source-root
+symlinks are resolved before enforcing this boundary. Atomic report replacement
+avoids truncated files. No Git operations are performed by the analyzer.
+
+Go dependency/build caches and the CLI's temporary stdout spool live outside the
+source target. CGO can invoke native build tools when explicitly enabled. The
+optional acceptance manifest helper uses read-only `git ls-files` to compare
+sample source contents; it is not part of the analyzer or its cache identity.

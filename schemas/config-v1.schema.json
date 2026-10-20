@@ -1,0 +1,222 @@
+{
+  "$defs": {
+    "Config": {
+      "additionalProperties": false,
+      "properties": {
+        "configurations": {
+          "items": {
+            "$ref": "#/$defs/Configuration"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "exceptions": {
+          "items": {
+            "$ref": "#/$defs/Exception"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "excluded_modules": {
+          "items": {
+            "$ref": "#/$defs/Exclusion"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "modules": {
+          "items": {
+            "$ref": "#/$defs/Module"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "schema_version": {
+          "const": 1
+        }
+      },
+      "required": [
+        "schema_version",
+        "modules",
+        "configurations"
+      ],
+      "type": "object"
+    },
+    "Configuration": {
+      "additionalProperties": false,
+      "properties": {
+        "cgo_enabled": {
+          "type": "boolean"
+        },
+        "goarch": {
+          "type": "string"
+        },
+        "goos": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "goos",
+        "goarch",
+        "tags",
+        "cgo_enabled"
+      ],
+      "type": "object"
+    },
+    "EntryPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "configurations": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "package": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "package",
+        "role"
+      ],
+      "type": "object"
+    },
+    "Exception": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_by": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "review_after": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "symbol",
+        "category",
+        "reason",
+        "approved_by",
+        "review_after",
+        "fingerprint"
+      ],
+      "type": "object"
+    },
+    "Exclusion": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "Module": {
+      "additionalProperties": false,
+      "properties": {
+        "entry_points": {
+          "items": {
+            "$ref": "#/$defs/EntryPoint"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "ignored_mains": {
+          "items": {
+            "$ref": "#/$defs/Exclusion"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "library": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tests": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "patterns",
+        "entry_points"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/bradhannah/go-clean-deadcode/schemas/config-v1.schema.json",
+  "$ref": "#/$defs/Config",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
