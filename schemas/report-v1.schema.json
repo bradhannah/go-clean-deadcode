@@ -1,0 +1,694 @@
+{
+  "$defs": {
+    "Diagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "severity"
+      ],
+      "type": "object"
+    },
+    "Edge": {
+      "additionalProperties": false,
+      "properties": {
+        "callee": {
+          "type": "string"
+        },
+        "caller": {
+          "type": "string"
+        },
+        "context": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/Location"
+        },
+        "scope": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "context",
+        "caller",
+        "callee",
+        "kind",
+        "location"
+      ],
+      "type": "object"
+    },
+    "EntryPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "classified": {
+          "type": "boolean"
+        },
+        "directory": {
+          "type": "string"
+        },
+        "package": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "package",
+        "directory",
+        "role",
+        "classified"
+      ],
+      "type": "object"
+    },
+    "ExceptionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_by": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "review_after": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "symbol",
+        "category",
+        "reason",
+        "approved_by",
+        "review_after",
+        "status"
+      ],
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "exception": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "symbol",
+        "scopes",
+        "status"
+      ],
+      "type": "object"
+    },
+    "Group": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "members": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "recursive": {
+          "type": "boolean"
+        },
+        "scope": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "scope",
+        "members",
+        "recursive"
+      ],
+      "type": "object"
+    },
+    "Location": {
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "type": "integer"
+        },
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "file",
+        "line",
+        "column"
+      ],
+      "type": "object"
+    },
+    "Metrics": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_hit": {
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "type": "integer"
+        },
+        "load_ms": {
+          "type": "integer"
+        },
+        "reachability_ms": {
+          "type": "integer"
+        },
+        "ssa_ms": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "duration_ms",
+        "load_ms",
+        "ssa_ms",
+        "reachability_ms",
+        "cache_hit"
+      ],
+      "type": "object"
+    },
+    "Obligation": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/Location"
+        },
+        "scope": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "kind",
+        "description",
+        "location"
+      ],
+      "type": "object"
+    },
+    "Reference": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/Location"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "symbol",
+        "kind",
+        "location"
+      ],
+      "type": "object"
+    },
+    "Report": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "diagnostics": {
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/Edge"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "exceptions": {
+          "items": {
+            "$ref": "#/$defs/ExceptionResult"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "groups": {
+          "items": {
+            "$ref": "#/$defs/Group"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "input_digest": {
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "metrics": {
+          "$ref": "#/$defs/Metrics"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "references": {
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "scopes": {
+          "items": {
+            "$ref": "#/$defs/Scope"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "summary": {
+          "$ref": "#/$defs/Summary"
+        },
+        "symbols": {
+          "items": {
+            "$ref": "#/$defs/Symbol"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tool_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "tool_version",
+        "mode",
+        "complete",
+        "scopes",
+        "symbols",
+        "edges",
+        "references",
+        "groups",
+        "findings",
+        "exceptions",
+        "diagnostics",
+        "summary",
+        "metrics",
+        "limitations"
+      ],
+      "type": "object"
+    },
+    "Scope": {
+      "additionalProperties": false,
+      "properties": {
+        "cgo_enabled": {
+          "type": "boolean"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "configuration": {
+          "type": "string"
+        },
+        "entry_points": {
+          "items": {
+            "$ref": "#/$defs/EntryPoint"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "goarch": {
+          "type": "string"
+        },
+        "goos": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "nested_modules": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "packages": {
+          "type": "integer"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tests": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "module",
+        "patterns",
+        "configuration",
+        "goos",
+        "goarch",
+        "tags",
+        "cgo_enabled",
+        "complete",
+        "packages",
+        "entry_points",
+        "tests",
+        "nested_modules"
+      ],
+      "type": "object"
+    },
+    "State": {
+      "additionalProperties": false,
+      "properties": {
+        "production": {
+          "type": "string"
+        },
+        "production_roots": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "scope": {
+          "type": "string"
+        },
+        "test_roots": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tests": {
+          "type": "string"
+        },
+        "witness_search_complete": {
+          "type": "boolean"
+        },
+        "witnesses": {
+          "items": {
+            "$ref": "#/$defs/Witness"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "scope",
+        "production",
+        "tests",
+        "production_roots",
+        "test_roots",
+        "witnesses",
+        "witness_search_complete"
+      ],
+      "type": "object"
+    },
+    "Summary": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "type": "integer"
+        },
+        "stale_exceptions": {
+          "type": "integer"
+        },
+        "structural_methods": {
+          "type": "integer"
+        },
+        "symbols": {
+          "type": "integer"
+        },
+        "test_only": {
+          "type": "integer"
+        },
+        "unreachable": {
+          "type": "integer"
+        },
+        "unresolved": {
+          "type": "integer"
+        },
+        "unused_test_helpers": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "symbols",
+        "unreachable",
+        "test_only",
+        "unused_test_helpers",
+        "unresolved",
+        "accepted",
+        "stale_exceptions",
+        "structural_methods"
+      ],
+      "type": "object"
+    },
+    "Symbol": {
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": {
+          "type": "string"
+        },
+        "generated": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "locations": {
+          "items": {
+            "$ref": "#/$defs/Location"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "obligations": {
+          "items": {
+            "$ref": "#/$defs/Obligation"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "package": {
+          "type": "string"
+        },
+        "receiver": {
+          "type": "string"
+        },
+        "registered_test": {
+          "type": "boolean"
+        },
+        "states": {
+          "items": {
+            "$ref": "#/$defs/State"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "test_file": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "package",
+        "name",
+        "kind",
+        "test_file",
+        "generated",
+        "fingerprint",
+        "registered_test",
+        "locations",
+        "states",
+        "obligations"
+      ],
+      "type": "object"
+    },
+    "Witness": {
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "path": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "root",
+        "context",
+        "kind",
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/bradhannah/go-clean-deadcode/schemas/report-v1.schema.json",
+  "$ref": "#/$defs/Report",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

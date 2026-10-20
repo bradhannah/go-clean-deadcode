@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "modules": [{
+    "path": ".",
+    "patterns": ["./..."],
+    "entry_points": [
+      {"package": "./cmd/app", "role": "application"},
+      {"package": "./cmd/tool", "role": "utility"}
+    ],
+    "tests": true
+  }],
+  "configurations": [
+    {"name": "linux-amd64", "goos": "linux", "goarch": "amd64", "tags": [], "cgo_enabled": false}
+  ]
+}
