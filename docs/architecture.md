@@ -91,6 +91,22 @@ scope; dynamic cycles are possible call groups, not proof of runtime recursion.
 v1 does not group cycles that require unmodeled dead dynamic calls or synthetic
 closure edges. This does not change RTA's declaration reachability classification.
 
+## Removal plan
+
+The plan replays clean-up passes on the evidence already in memory, without
+reloading or rebuilding. It marks every unresolved finding removed, removes tests
+whose direct production references are all removed, then walks test call edges
+from every surviving entry point: test-reached declarations that no other
+test-reached declaration calls. Test-reached code that is not production-live,
+required by an obligation, or reached again is exposed and forms the next wave.
+It repeats until a wave is empty. Calls inside closures count for the enclosing
+declaration, so removing a test also removes what its subtests call.
+
+The plan follows calls and direct function references only. It does not yet
+follow types, fields, constants or variables, and it does not predict compile
+fallout such as type switch cases or interface assertions naming a removed type;
+the build reports those directly.
+
 ## Repeatability and failures
 
 Symbol IDs use package, receiver base name and declaration name. Initializers add

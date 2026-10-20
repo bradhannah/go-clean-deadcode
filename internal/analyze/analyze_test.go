@@ -314,3 +314,38 @@ func TestTestSupportDeclarationsAreTestHelpers(t *testing.T) {
 		t.Errorf("scope does not record test support: %v", got)
 	}
 }
+
+func TestRemovalPlanFollowsTheCascade(t *testing.T) {
+	root, c := fixture(t)
+	r := Run(context.Background(), Options{Root: root, Config: c})
+	if !r.Complete {
+		t.Fatalf("incomplete: %+v", r.Diagnostics)
+	}
+	planned := map[string]report.Removal{}
+	wave := map[string]int{}
+	for _, w := range r.Plan.Waves {
+		for _, x := range w.Removals {
+			name := strings.TrimPrefix(x.Symbol, "example.com/sample/")
+			planned[name], wave[name] = x, w.Number
+		}
+	}
+	for name, want := range map[string]int{"lib.Obsolete": 1, "lib.TestObsolete": 1, "lib.obsoleteSetup": 2, "lib.DeadA": 1} {
+		if wave[name] != want {
+			t.Errorf("%s planned in wave %d, want %d", name, wave[name], want)
+		}
+	}
+	if planned["lib.TestObsolete"].Reason != "dedicated_test" || planned["lib.obsoleteSetup"].Reason != "exposed" {
+		t.Errorf("unexpected reasons: %+v %+v", planned["lib.TestObsolete"], planned["lib.obsoleteSetup"])
+	}
+	for _, kept := range []string{"lib.TestMixed", "lib.Live", "lib.job.label", "lib.Hidden.seal"} {
+		if _, ok := planned[kept]; ok {
+			t.Errorf("%s must not be planned for removal", kept)
+		}
+	}
+	if !slices.Contains(r.Plan.Waves[0].TestsNeedingEdits, "example.com/sample/lib.TestMixed") {
+		t.Errorf("TestMixed references removed code and survives: %v", r.Plan.Waves[0].TestsNeedingEdits)
+	}
+	if planned["lib.Obsolete"].Lines < 1 || r.Plan.Lines < r.Plan.Waves[0].Lines {
+		t.Errorf("line counts missing: %+v", r.Plan)
+	}
+}

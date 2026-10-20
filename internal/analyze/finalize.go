@@ -150,6 +150,7 @@ func (e *engine) finalize(c config.Config) {
 	}
 	e.report.Summary.Symbols = len(e.report.Symbols)
 	e.report.Diagnostics = unique(e.report.Diagnostics)
+	e.report.Plan = e.plan()
 }
 
 // groups uses iterative Kosaraju traversal. Cycles never trigger recursive walking.

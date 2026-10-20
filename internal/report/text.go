@@ -29,6 +29,14 @@ func Text(w io.Writer, r *Report, only string) error {
 	fmt.Fprintf(&b, "\nSummary\n  Unreachable functions: %d\n  Non-test functions reachable only in tests: %d\n  Unreachable test declarations: %d\n  Unresolved findings: %d\n  Accepted exceptions: %d\n  Stale exceptions: %d\n", r.Summary.Unreachable, r.Summary.TestOnly, r.Summary.UnusedTestHelpers, r.Summary.Unresolved, r.Summary.Accepted, r.Summary.StaleExceptions)
 	fmt.Fprintf(&b, "  Structural interface-marker methods: %d\n", r.Summary.StructuralMethods)
 	fmt.Fprintf(&b, "  Methods required by asserted interfaces: %d\n", r.Summary.RequiredMethods)
+	if len(r.Plan.Waves) > 0 {
+		fmt.Fprintf(&b, "\nRemoval plan (simulated; nothing is edited)\n")
+		for _, w := range r.Plan.Waves {
+			fmt.Fprintf(&b, "  Wave %d: %d functions, %d test helpers, %d tests, %d lines; %d surviving tests need edits\n",
+				w.Number, w.Functions, w.TestHelpers, w.Tests, w.Lines, len(w.TestsNeedingEdits))
+		}
+		fmt.Fprintf(&b, "  Total: %d functions and test helpers, %d tests, %d lines\n", r.Plan.Functions, r.Plan.Tests, r.Plan.Lines)
+	}
 	byID := map[string]Symbol{}
 	for _, s := range r.Symbols {
 		byID[s.ID] = s

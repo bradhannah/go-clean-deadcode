@@ -85,6 +85,16 @@ symbol, category, reviewed fingerprint, reason, reviewer and review date after
 approval under local policy. Never invent approval or auto-refresh a changed or
 expired exception. See [exceptions](references/exceptions.md).
 
+When applying a report's `plan`, decide each `test_only` removal from its facts:
+one referenced by tests in other packages (`other_packages`) is shared test
+support, so move it to a `test_support` file instead; one that surviving tests use
+as a fixture moves into their `_test.go` file. Edit each `tests_needing_edits`
+test so it no longer uses removed code while still checking what it checked
+before. Then build every configuration, run the repository's linter and
+formatter to clear whitespace and import artifacts, and compare test coverage
+with the pre-change commit: a live function that lost coverage means a test of
+live behaviour was weakened.
+
 Repeat analysis after changes, including after removing a test/root. Stop and
 report blocked decisions when there is no progress or scope is incomplete. Do not
 weaken analysis or broaden exceptions to force a pass. This skill grants no Git

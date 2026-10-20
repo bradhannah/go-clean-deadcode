@@ -254,6 +254,36 @@
       ],
       "type": "object"
     },
+    "Plan": {
+      "additionalProperties": false,
+      "properties": {
+        "functions": {
+          "type": "integer"
+        },
+        "lines": {
+          "type": "integer"
+        },
+        "tests": {
+          "type": "integer"
+        },
+        "waves": {
+          "items": {
+            "$ref": "#/$defs/Wave"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "waves",
+        "functions",
+        "tests",
+        "lines"
+      ],
+      "type": "object"
+    },
     "Reference": {
       "additionalProperties": false,
       "properties": {
@@ -278,6 +308,38 @@
         "symbol",
         "kind",
         "location"
+      ],
+      "type": "object"
+    },
+    "Removal": {
+      "additionalProperties": false,
+      "properties": {
+        "lines": {
+          "type": "integer"
+        },
+        "other_packages": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "referenced_by": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "symbol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "symbol",
+        "reason",
+        "lines"
       ],
       "type": "object"
     },
@@ -350,6 +412,9 @@
         "mode": {
           "type": "string"
         },
+        "plan": {
+          "$ref": "#/$defs/Plan"
+        },
         "references": {
           "items": {
             "$ref": "#/$defs/Reference"
@@ -401,6 +466,7 @@
         "exceptions",
         "diagnostics",
         "summary",
+        "plan",
         "metrics",
         "limitations"
       ],
@@ -615,6 +681,9 @@
         "kind": {
           "type": "string"
         },
+        "lines": {
+          "type": "integer"
+        },
         "locations": {
           "items": {
             "$ref": "#/$defs/Location"
@@ -667,12 +736,61 @@
         "name",
         "kind",
         "test_file",
+        "lines",
         "generated",
         "fingerprint",
         "registered_test",
         "locations",
         "states",
         "obligations"
+      ],
+      "type": "object"
+    },
+    "Wave": {
+      "additionalProperties": false,
+      "properties": {
+        "functions": {
+          "type": "integer"
+        },
+        "lines": {
+          "type": "integer"
+        },
+        "number": {
+          "type": "integer"
+        },
+        "removals": {
+          "items": {
+            "$ref": "#/$defs/Removal"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "test_helpers": {
+          "type": "integer"
+        },
+        "tests": {
+          "type": "integer"
+        },
+        "tests_needing_edits": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "number",
+        "removals",
+        "functions",
+        "test_helpers",
+        "tests",
+        "lines",
+        "tests_needing_edits"
       ],
       "type": "object"
     },

@@ -19,6 +19,7 @@ type Report struct {
 	Exceptions    []ExceptionResult `json:"exceptions"`
 	Diagnostics   []Diagnostic      `json:"diagnostics"`
 	Summary       Summary           `json:"summary"`
+	Plan          Plan              `json:"plan"`
 	Metrics       Metrics           `json:"metrics"`
 	Limitations   []string          `json:"limitations"`
 }
@@ -62,6 +63,7 @@ type Symbol struct {
 	Kind           string       `json:"kind"`
 	TestFile       bool         `json:"test_file"`
 	TestSupport    bool         `json:"test_support,omitempty"`
+	Lines          int          `json:"lines"`
 	Generated      bool         `json:"generated"`
 	Fingerprint    string       `json:"fingerprint"`
 	RegisteredTest bool         `json:"registered_test"`
@@ -118,6 +120,39 @@ type Group struct {
 	Recursive bool     `json:"recursive"`
 }
 
+// Plan simulates removing every unresolved finding, then whatever that removal
+// exposes, until nothing new becomes unused. It never edits source; the waves
+// describe what repeated clean-up passes would each find.
+type Plan struct {
+	Waves     []Wave `json:"waves"`
+	Functions int    `json:"functions"`
+	Tests     int    `json:"tests"`
+	Lines     int    `json:"lines"`
+}
+
+type Wave struct {
+	Number      int       `json:"number"`
+	Removals    []Removal `json:"removals"`
+	Functions   int       `json:"functions"`
+	TestHelpers int       `json:"test_helpers"`
+	Tests       int       `json:"tests"`
+	Lines       int       `json:"lines"`
+	// Tests that stay but directly reference something this wave removes; each
+	// needs an edit, and may be a live-behaviour test using it as a fixture.
+	TestsNeedingEdits []string `json:"tests_needing_edits"`
+}
+
+// Removal is one planned declaration removal. Reason is the finding category,
+// "dedicated_test" for a test whose only production references are removed, or
+// "exposed" for code that only removed code reached.
+type Removal struct {
+	Symbol        string   `json:"symbol"`
+	Reason        string   `json:"reason"`
+	Lines         int      `json:"lines"`
+	ReferencedBy  []string `json:"referenced_by,omitempty"`
+	OtherPackages bool     `json:"other_packages,omitempty"`
+}
+
 type Finding struct {
 	ID        string   `json:"id"`
 	Category  string   `json:"category"`
@@ -168,7 +203,7 @@ func New(mode string) *Report {
 	return &Report{SchemaVersion: SchemaVersion, ToolVersion: ToolVersion, Mode: mode,
 		Complete: true, Scopes: []Scope{}, Symbols: []Symbol{}, Edges: []Edge{},
 		References: []Reference{}, Groups: []Group{}, Findings: []Finding{},
-		Exceptions: []ExceptionResult{}, Diagnostics: []Diagnostic{},
+		Exceptions: []ExceptionResult{}, Diagnostics: []Diagnostic{}, Plan: Plan{Waves: []Wave{}},
 		Limitations: []string{
 			"Reachability is a conservative static approximation, not evidence of execution or assertion coverage.",
 			"Test witnesses are may-reach paths in a combined test-executable analysis; dynamic targets can be shared across tests and packages.",
