@@ -12,4 +12,5 @@ func main() {
 	lib.HeaderSize()
 	lib.Digest()
 	lib.Boxed()
+	lib.Distinct()
 }

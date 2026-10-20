@@ -43,6 +43,8 @@ type engine struct {
 	decl     *declarationEvidence
 	// significant holds struct types whose field layout must not change.
 	significant map[string]bool
+	// sizeGuarded holds struct types whose only sized fields are removable.
+	sizeGuarded map[string]bool
 }
 
 func Run(ctx context.Context, opt Options) (result *report.Report) {

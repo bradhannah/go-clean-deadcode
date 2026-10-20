@@ -48,6 +48,7 @@ type declarationEvidence struct {
 	writes      map[string]bool                       // fields written anywhere, including dead code
 	reads       map[string][]fieldRead                // fields read, with the reading function
 	significant map[string]bool                       // struct types whose layout matters
+	structs     map[string]*types.Struct              // struct types by declaration
 	roots       map[string]map[string]bool            // scope -> declarations that exported API keeps
 	reachable   map[string]map[string]map[string]bool // scope -> kind -> reachable functions
 }
@@ -55,7 +56,7 @@ type declarationEvidence struct {
 func newDeclarationEvidence() *declarationEvidence {
 	return &declarationEvidence{decls: map[string]*declaration{}, fields: map[*types.Var]string{},
 		uses: map[string]map[string]bool{}, writes: map[string]bool{}, reads: map[string][]fieldRead{},
-		significant: map[string]bool{}, roots: map[string]map[string]bool{}, reachable: map[string]map[string]map[string]bool{}}
+		significant: map[string]bool{}, structs: map[string]*types.Struct{}, roots: map[string]map[string]bool{}, reachable: map[string]map[string]map[string]bool{}}
 }
 
 func (e *engine) reachableFunction(scope, analysis, id string) {
@@ -181,6 +182,7 @@ func (e *engine) declare(p *packages.Package, file *ast.File, g *ast.GenDecl, pa
 // removing an unused field can free a type only it used.
 func (e *engine) declareFields(p *packages.Package, file *ast.File, structAST *ast.StructType, st *types.Struct, owner,
 	path, scope, analysis string, module config.Module, dir string, api bool) {
+	e.decl.structs[owner] = st
 	for i := range st.NumFields() {
 		field := st.Field(i)
 		node := fieldNode(structAST, field)
@@ -505,7 +507,57 @@ func (e *engine) layoutSignificant() map[string]bool {
 
 // removableField reports whether a field may ever be planned for removal.
 func (e *engine) removableField(d *declaration, significant map[string]bool) bool {
+	return e.fieldRuleRemovable(d, significant) && !e.sizeGuarded[d.owner]
+}
+
+func (e *engine) fieldRuleRemovable(d *declaration, significant map[string]bool) bool {
 	return !d.exported && !d.tagged && !d.embedded && !significant[d.owner]
+}
+
+// sizeGuards lists structs whose removable fields are all that give them a
+// size. Distinct pointers to a zero-size value may compare equal, so removing
+// those fields could change what identity comparisons of the struct mean.
+func (e *engine) sizeGuards(significant map[string]bool) map[string]bool {
+	guarded := map[string]bool{}
+	for owner, st := range e.decl.structs {
+		sized, kept := false, true
+		for i := range st.NumFields() {
+			field := st.Field(i)
+			d := e.decl.decls[e.decl.fields[field]]
+			if field.Name() != "_" && d != nil && e.fieldRuleRemovable(d, significant) {
+				sized = sized || !possiblyZeroSize(field.Type())
+			} else if !possiblyZeroSize(field.Type()) {
+				kept = false
+			}
+		}
+		if sized && kept {
+			guarded[owner] = true
+		}
+	}
+	return guarded
+}
+
+// possiblyZeroSize reports a type that has, or for some instantiation may have,
+// size zero.
+func possiblyZeroSize(t types.Type) bool {
+	switch u := t.(type) {
+	case *types.TypeParam:
+		return true
+	case *types.Alias:
+		return possiblyZeroSize(types.Unalias(u))
+	case *types.Named:
+		return possiblyZeroSize(u.Underlying())
+	case *types.Array:
+		return u.Len() == 0 || possiblyZeroSize(u.Elem())
+	case *types.Struct:
+		for i := range u.NumFields() {
+			if !possiblyZeroSize(u.Field(i).Type()) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // liveDeclarations walks uses from the given live functions and roots. A live
@@ -545,6 +597,7 @@ func (e *engine) liveDeclarations(seeds map[string]bool, removed map[string]int,
 // and analyses whose functions or exported API use it.
 func (e *engine) declarationStates() map[string]bool {
 	significant := e.layoutSignificant()
+	e.sizeGuarded = e.sizeGuards(significant)
 	scopes := make([]string, 0, len(e.decl.reachable))
 	for scope := range e.decl.reachable {
 		scopes = append(scopes, scope)
@@ -607,6 +660,28 @@ func (e *engine) keptDeclaration(id string, significant, liveGroups map[string]b
 		return true, "Unused value of a constant block that is in use; review it, but it is not removed by default."
 	}
 	return false, ""
+}
+
+// sizeGuardNotes lists unused fields kept only because they give a live struct
+// its size.
+func (e *engine) sizeGuardNotes(significant map[string]bool, live func(string) bool) []report.Note {
+	used := map[string]bool{}
+	for from, uses := range e.decl.uses {
+		if live(from) {
+			for to := range uses {
+				used[to] = true
+			}
+		}
+	}
+	var notes []report.Note
+	for id, d := range e.decl.decls {
+		if d.kind == "field" && !used[id] && live(d.owner) && e.sizeGuarded[d.owner] && e.fieldRuleRemovable(d, significant) {
+			notes = append(notes, report.Note{Symbol: id, Kind: "size_guard_field", Message: "Unused field that keeps " +
+				d.owner + " from being zero-sized; removing it could make distinct pointers to the struct compare equal, " +
+				"so it is not removed by default."})
+		}
+	}
+	return notes
 }
 
 // neverAssigned lists eligible fields that live code reads but nothing writes:

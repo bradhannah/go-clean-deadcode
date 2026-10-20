@@ -359,7 +359,7 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 	found := findingsOf(r)
 	for name, want := range map[string]string{
 		"lib.deadConfig": "unreachable", "lib.deadLimit": "unreachable", "lib.deadTable": "unreachable",
-		"lib.settings.unused": "unreachable", "lib.settings.enabled": "never_assigned", "lib.box.spare": "unreachable",
+		"lib.settings.unused": "unreachable", "lib.settings.enabled": "never_assigned",
 		"lib.testOnlyKind": "test_only", "lib.unusedFixture": "unused_test_helper",
 	} {
 		if got := found[name]; got != want {
@@ -367,7 +367,7 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 		}
 	}
 	for _, kept := range []string{"lib.Shape", "lib.Circle", "lib.Square", "lib.settings", "lib.settings.name",
-		"lib.settings.Exported", "lib.settings.tagged", "lib.header.spare", "lib.header.magic", "lib.registry", "lib.digest.sum", "lib.box.value",
+		"lib.settings.Exported", "lib.settings.tagged", "lib.header.spare", "lib.header.magic", "lib.registry", "lib.digest.sum", "lib.box.value", "lib.box.spare", "lib.instance.id",
 		"lib.deadConfig.size", "lib.finisher"} {
 		if got := found[kept]; got != "" {
 			t.Errorf("%s must not be a finding; got %q", kept, got)
@@ -377,7 +377,8 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 	for _, n := range r.Notes {
 		notes[strings.TrimPrefix(n.Symbol, "example.com/sample/")] = n.Kind
 	}
-	if notes["lib.Square"] != "unused_enum_value" || len(r.Notes) != 1 {
+	if notes["lib.Square"] != "unused_enum_value" || notes["lib.instance.id"] != "size_guard_field" ||
+		notes["lib.box.spare"] != "size_guard_field" || len(r.Notes) != 3 {
 		t.Errorf("enum note missing or extra: %v", r.Notes)
 	}
 	for _, f := range r.Findings {

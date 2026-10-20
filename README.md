@@ -65,6 +65,8 @@ and struct fields. Some unused declarations are never findings because removing
 them would change a meaning: exported fields, tagged or embedded fields, every
 field of a struct whose layout matters (used with `encoding/binary`, `reflect` or
 `unsafe`, converted to another struct type, or built with an unkeyed literal),
+fields that are all that keep a struct from being zero-sized (pointer identity
+depends on it),
 and variables whose initializer calls something. An unused value of a constant
 block or typed enum that is otherwise in use is reported as a note for review,
 not a finding.

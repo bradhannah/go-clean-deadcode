@@ -128,7 +128,12 @@ removal findings: exported, tagged, embedded and blank fields; and every field o
 a layout-significant struct. A struct is layout-significant when it reaches
 `encoding/binary`, `reflect` or `unsafe`, is converted to or from another struct
 type, or is built with an unkeyed composite literal; a struct field type of a
-significant struct is significant too. Fields of a dead type are removed with it
+significant struct is significant too. A struct's removable fields are also kept
+when they are all that give it a size: distinct pointers to a zero-size value may
+compare equal, so removing them could change identity comparisons, such as a
+stack refusing the same instance twice. Fields whose type is a type parameter
+count as possibly zero-sized. Each such unused field is a `size_guard_field`
+note. Fields of a dead type are removed with it
 and not reported separately. Variables whose initializer calls a function are
 kept for its effects. Blank `_` declarations are not inventoried and do not keep
 what they name live: a `var _ I = (*T)(nil)` assertion on an otherwise unused

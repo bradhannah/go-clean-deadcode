@@ -31,8 +31,9 @@ Structural validation is not semantic acceptance. A consumer should:
 - `findings`: stable category/symbol identity, analyzed scopes, unresolved or
   accepted disposition, and any matching exception ID. A `never_assigned`
   finding lists the live `reads` of its field.
-- `notes`: review information that is never a finding, such as an
-  `unused_enum_value`: an unused value of a constant set otherwise in use.
+- `notes`: review information that is never a finding: an `unused_enum_value`
+  is an unused value of a constant set otherwise in use, and a
+  `size_guard_field` is an unused field kept because it gives its struct a size.
 - `exceptions`: reasons, declared approval, review dates and match status.
 - `diagnostics`: scope/configuration/load errors and explicit exclusions.
 - `plan`: a simulated removal of every unresolved finding, in waves. Wave 1 is

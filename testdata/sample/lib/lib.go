@@ -116,7 +116,13 @@ type settings struct {
 	tagged   int `layout:"t"`
 }
 
-// box is generic: its methods use instantiated fields, which are the declared ones.
+// instance's unused field keeps it sized, so pointers to two instances differ.
+type instance struct{ id int }
+
+func Distinct() bool { return &instance{} != &instance{} }
+
+// box is generic: its methods use instantiated fields, which are the declared
+// ones. spare is unused but stays: box[struct{}] would have no size without it.
 type box[T any] struct {
 	value T
 	spare int
