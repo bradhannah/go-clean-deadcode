@@ -45,6 +45,16 @@ type engine struct {
 	significant map[string]bool
 	// sizeGuarded holds struct types whose only sized fields are removable.
 	sizeGuarded map[string]bool
+	// unexplained holds, per scope and analysis, reachable symbols that no call
+	// path from an entry point reaches.
+	unexplained map[lookupKey]map[string]bool
+	// lookups holds, per scope and analysis, reachable reflective method lookups.
+	lookups map[lookupKey]map[report.ReflectiveLookup]bool
+	// lookupPackages holds the package of each standard-library lookup caller.
+	lookupPackages map[lookupKey]map[string]string
+	// conformance holds the interfaces whose conversions require each method.
+	conformance map[string][]string
+	conversions map[string]bool
 }
 
 func Run(ctx context.Context, opt Options) (result *report.Report) {
@@ -57,6 +67,11 @@ func Run(ctx context.Context, opt Options) (result *report.Report) {
 	e.progress = opt.Progress
 	e.bodies = map[string]map[string]bool{}
 	e.decl = newDeclarationEvidence()
+	e.unexplained = map[lookupKey]map[string]bool{}
+	e.lookups = map[lookupKey]map[report.ReflectiveLookup]bool{}
+	e.lookupPackages = map[lookupKey]map[string]string{}
+	e.conformance = map[string][]string{}
+	e.conversions = map[string]bool{}
 	defer func() {
 		if p := recover(); p != nil {
 			e.report.Error("analysis_panic", "", fmt.Sprintf("analysis failed: %v", p))
@@ -188,7 +203,7 @@ func (e *engine) load(ctx context.Context, m config.Module, v config.Configurati
 
 func (e *engine) scope(ctx context.Context, m config.Module, v config.Configuration, nested []string, discover bool) {
 	id := filepath.ToSlash(m.Path) + "@" + v.Name
-	s := report.Scope{ID: id, Module: m.Path, Configuration: v.Name, GOOS: v.GOOS, GOARCH: v.GOARCH, Tags: append([]string{}, v.Tags...), CGOEnabled: v.CGOEnabled, Tests: m.IncludeTests(), EntryPoints: []report.EntryPoint{}, APIRoots: m.APIRoots, TestSupport: append([]string{}, m.TestSupport...), NestedModules: append([]string{}, nested...)}
+	s := report.Scope{ID: id, Module: m.Path, Configuration: v.Name, GOOS: v.GOOS, GOARCH: v.GOARCH, Tags: append([]string{}, v.Tags...), CGOEnabled: v.CGOEnabled, Tests: m.IncludeTests(), EntryPoints: []report.EntryPoint{}, ReflectiveLookups: []report.ReflectiveLookup{}, APIRoots: m.APIRoots, TestSupport: append([]string{}, m.TestSupport...), NestedModules: append([]string{}, nested...)}
 	s.Patterns = append([]string{}, m.Patterns...)
 	defer func() {
 		for _, d := range e.report.Diagnostics {
@@ -733,6 +748,29 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 	if kind == "production" {
 		productionPaths = forwardWitnesses(index, rootLabels, kind, targets)
 	}
+	// A complete forward search decides which reachable code no call path
+	// reaches; the bounded witness search below only finds example paths.
+	connected := productionPaths
+	if kind == "tests" {
+		connected = forwardWitnesses(index, labels, kind, targets)
+	}
+	// Instantiations of one generic declaration share its symbol: it is
+	// unconnected only when no instantiation is connected.
+	key := lookupKey{scope, kind}
+	connectedIDs := map[string]bool{}
+	for fn := range connected {
+		if id, ok := positions[prog.Fset.Position(fn.Pos())]; ok {
+			connectedIDs[id] = true
+		}
+	}
+	for fn := range targets {
+		if id, ok := positions[prog.Fset.Position(fn.Pos())]; ok && !connectedIDs[id] {
+			if e.unexplained[key] == nil {
+				e.unexplained[key] = map[string]bool{}
+			}
+			e.unexplained[key][id] = true
+		}
+	}
 	for fn := range res.Reachable {
 		id, ok := positions[prog.Fset.Position(fn.Pos())]
 		if !ok {
@@ -747,7 +785,10 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 				w = []report.Witness{p}
 			}
 		} else {
-			if s.Production == "reachable" || e.symbols[id].TestFile || e.symbols[id].TestSupport {
+			// Code that production reaches only through reflection's exported-method
+			// rule needs its test evidence too, should a review discount that rule.
+			retainedOnly := e.unexplained[lookupKey{scope, "production"}][id]
+			if s.Production == "reachable" && !retainedOnly || e.symbols[id].TestFile || e.symbols[id].TestSupport {
 				continue
 			}
 			w, complete = witnesses(index, fn, labels, kind)
@@ -770,6 +811,9 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 			}
 		}
 	}
+	e.recordReflectiveLookup(scope, kind, res.CallGraph)
+	// Test files convert their fakes to interfaces too.
+	e.recordConformance(prog)
 	e.log(scope + " " + kind + ": graph edges")
 	for _, node := range res.CallGraph.Nodes {
 		for _, edge := range node.Out {

@@ -38,6 +38,32 @@ reconstructed from call-graph edges: reflection may retain a function without an
 ordinary explanatory path. `unexplained_retention` means no witness was obtained
 within the search bounds, not proof that reflection specifically caused it.
 
+## Reflection
+
+RTA keeps every exported method of every runtime type, because reflection could
+call it, even when nothing in the program can. A complete forward search over
+the call graph from each analysis's roots finds what no call path reaches; a
+root without call edges is its own path, and a generic declaration is connected
+when any instantiation is. Of that code, a function or method is kept only by
+the reflection rule when no interface conversion anywhere in the program
+requires it (recorded from every `MakeInterface` instruction, test programs
+included) and nothing reachable outside that set refers to it; package-level
+references count as reachable.
+
+Only reflect's method lookups (`Method` and `MethodByName` on `reflect.Value` and
+`reflect.Type`) can call such code. Lookup callers are found through
+compiler-generated wrappers, but not through package reflect's own functions,
+which reach a lookup only for a method value one outside reflect produced. Each
+caller's entries are the first functions outside the standard library on static
+call paths to it, plus module code that refers to a standard-library caller's
+package, which covers function values that static edges do not show. Without
+reviews, the kept code becomes `reflection_retained` notes. With every entry of
+an analysis reviewed, or no lookup at all, as the Go linker would conclude, the
+kept code is unreachable there and its states carry `reflection_reviewed`.
+Methods that a conversion requires become `interface_conformance` notes: their
+removal is a change to the interface, and type switches and assertions on it can
+change behaviour.
+
 Source references are independently collected from type-resolved AST identifiers,
 including dead callers. A reference does not prove runtime reachability. Direct
 SSA edges include unreachable bodies so mutually recursive dead code remains
@@ -68,9 +94,8 @@ A method a runtime type needs to satisfy an interface that reachable code checks
 with a type assertion or type switch is required even when nothing calls it:
 removing it still compiles but silently changes which branch runs. Such methods
 carry an `assertion_satisfaction` obligation, create no finding, and are counted
-as `required_methods`. Reachability already keeps exported methods of runtime
-types, so this matters most for unexported interface methods, such as a test
-fake checked by production code.
+as `required_methods`. This includes exported methods once a reflection review
+lets the analysis discount the reflection rule.
 Methods with no Go body retain an explicit native/assembly review note. Blank
 functions (`func _()`) are not inventoried: nothing can call them, and they exist
 only as compile-time assertions, such as `stringer`'s constant checks.

@@ -83,6 +83,37 @@ Do not invent approvals, mass-accept a baseline, or refresh fingerprints merely
 to pass. Review why the contract is retained and whether useful tests should be
 migrated instead of discarded.
 
+## Reflection reviews
+
+Reachability keeps every exported method of a runtime type, because reflection
+could call it. Only reflect's method lookups can: `reflect.Value.Method` and
+`MethodByName`, and the same methods of `reflect.Type`. Each scope reports the
+reachable lookups in `reflective_lookups`, per analysis, with `via` (the function
+calling the lookup) and `entry` (the first function outside the standard library
+on a static call path to it, or module code that refers to the lookup's
+package). An analysis with no lookup needs no review.
+
+A reflection review records an owner's finding that one entry never passes this
+module's values to the lookup:
+
+```json
+{
+  "id": "ebiten-builtin-shader-templates",
+  "entry": "github.com/hajimehoshi/ebiten/v2/internal/builtinshader.ShaderSource",
+  "reason": "Executes its shader templates with a struct of its own Filter and Address values.",
+  "approved_by": "repository owner",
+  "review_after": "2027-04-20"
+}
+```
+
+When every entry of an analysis has a matched, current review, code that only
+reflection's exported-method rule keeps is unreachable in that analysis and is
+classified normally. Read the entry's source before approving: what it passes to
+the lookup, and whether module values can reach it, for example through a
+template's data or functions. An unmatched or expired review counts in
+`stale_exceptions`. A dependency upgrade can add entries; an unreviewed entry
+restores the conservative rule for its analysis. Do not invent approvals.
+
 ## File behavior
 
 Target source is read-only. Configurations can be external. `--output`,

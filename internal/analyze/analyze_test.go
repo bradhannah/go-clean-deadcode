@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bradhannah/go-clean-deadcode/internal/config"
 	"github.com/bradhannah/go-clean-deadcode/internal/report"
@@ -361,6 +362,9 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 		"lib.deadConfig": "unreachable", "lib.deadLimit": "unreachable", "lib.deadTable": "unreachable",
 		"lib.settings.unused": "unreachable", "lib.settings.enabled": "never_assigned",
 		"lib.testOnlyKind": "test_only", "lib.unusedFixture": "unused_test_helper",
+		// Nothing in the program looks methods up by reflection, so the rule that
+		// keeps exported methods of runtime types does not keep these.
+		"lib.Receipt.Total": "unreachable", "lib.double": "unreachable",
 	} {
 		if got := found[name]; got != want {
 			t.Errorf("%s: got %q want %q", name, got, want)
@@ -398,5 +402,77 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 	}
 	if r.Plan.Declarations == 0 {
 		t.Errorf("plan counts no declarations: %+v", r.Plan)
+	}
+}
+
+func reflectionFixture(t *testing.T, reviews ...config.ReflectionReview) *report.Report {
+	t.Helper()
+	root, err := filepath.Abs("../../testdata/reflection")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := config.Default()
+	c.Modules[0].EntryPoints = []config.EntryPoint{{Package: "./cmd/app", Role: "application"}}
+	c.ReflectionReviews = reviews
+	r := Run(context.Background(), Options{Root: root, Config: c})
+	if !r.Complete {
+		t.Fatalf("incomplete: %+v", r.Diagnostics)
+	}
+	return r
+}
+
+func reflectionReview(entry string) config.ReflectionReview {
+	return config.ReflectionReview{ID: "R-1", Entry: entry, Reason: "Only sees the plugin's own handler.",
+		ApprovedBy: "owner", ReviewAfter: time.Now().AddDate(0, 1, 0).Format("2006-01-02")}
+}
+
+func TestReflectiveLookupKeepsExportedMethodsUntilReviewed(t *testing.T) {
+	r := reflectionFixture(t)
+	want := report.ReflectiveLookup{Analysis: "production", Entry: "example.com/reflection/plugin.Call", Via: "example.com/reflection/plugin.Call"}
+	if lookups := r.Scopes[0].ReflectiveLookups; len(lookups) != 1 || lookups[0] != want {
+		t.Fatalf("lookups: %+v", lookups)
+	}
+	if len(findingsOf(r)) != 0 {
+		t.Errorf("unreviewed reflection must not create findings: %v", findingsOf(r))
+	}
+	notes := map[string]string{}
+	for _, n := range r.Notes {
+		notes[strings.TrimPrefix(n.Symbol, "example.com/reflection/")] = n.Kind
+	}
+	if notes["shop.Receipt.Total"] != "reflection_retained" || notes["shop.double"] != "reflection_retained" ||
+		notes["shop.square.Area"] != "" {
+		t.Errorf("notes: %v", notes)
+	}
+}
+
+func TestReviewedReflectionFindsCodeOnlyItKept(t *testing.T) {
+	r := reflectionFixture(t, reflectionReview("example.com/reflection/plugin.Call"))
+	if r.ReflectionReviews[0].Status != "matched" || r.Summary.StaleExceptions != 0 {
+		t.Fatalf("review: %+v stale=%d", r.ReflectionReviews, r.Summary.StaleExceptions)
+	}
+	found := findingsOf(r)
+	for name, want := range map[string]string{"shop.Receipt.Total": "test_only", "shop.double": "test_only"} {
+		if got := found["example.com/reflection/"+name]; got != want {
+			t.Errorf("%s: got %q want %q", name, got, want)
+		}
+	}
+	for _, kept := range []string{"plugin.Start", "shop.square.Area", "shop.Print", "shop.Count", "shop.fakePricer.Price"} {
+		if got := found["example.com/reflection/"+kept]; got != "" {
+			t.Errorf("%s must not be a finding; got %q", kept, got)
+		}
+	}
+	conformance := false
+	for _, n := range r.Notes {
+		conformance = conformance || n.Kind == "interface_conformance" && strings.HasSuffix(n.Symbol, "shop.square.Area")
+	}
+	if !conformance {
+		t.Errorf("Area needs an interface_conformance note: %+v", r.Notes)
+	}
+}
+
+func TestUnmatchedReflectionReviewIsStale(t *testing.T) {
+	r := reflectionFixture(t, reflectionReview("example.com/reflection/plugin.Missing"))
+	if r.ReflectionReviews[0].Status != "unmatched" || r.Summary.StaleExceptions != 1 || len(findingsOf(r)) != 0 {
+		t.Fatalf("review: %+v stale=%d findings=%v", r.ReflectionReviews, r.Summary.StaleExceptions, findingsOf(r))
 	}
 }

@@ -17,12 +17,14 @@ type Report struct {
 	Groups        []Group           `json:"groups"`
 	Findings      []Finding         `json:"findings"`
 	Exceptions    []ExceptionResult `json:"exceptions"`
-	Diagnostics   []Diagnostic      `json:"diagnostics"`
-	Summary       Summary           `json:"summary"`
-	Plan          Plan              `json:"plan"`
-	Notes         []Note            `json:"notes"`
-	Metrics       Metrics           `json:"metrics"`
-	Limitations   []string          `json:"limitations"`
+	// ReflectionReviews are the configured reflection reviews and their status.
+	ReflectionReviews []ReflectionReviewResult `json:"reflection_reviews"`
+	Diagnostics       []Diagnostic             `json:"diagnostics"`
+	Summary           Summary                  `json:"summary"`
+	Plan              Plan                     `json:"plan"`
+	Notes             []Note                   `json:"notes"`
+	Metrics           Metrics                  `json:"metrics"`
+	Limitations       []string                 `json:"limitations"`
 }
 
 type Scope struct {
@@ -39,8 +41,10 @@ type Scope struct {
 	EntryPoints   []EntryPoint `json:"entry_points"`
 	APIRoots      string       `json:"api_roots,omitempty"`
 	TestSupport   []string     `json:"test_support,omitempty"`
-	Tests         bool         `json:"tests"`
-	NestedModules []string     `json:"nested_modules"`
+	// ReflectiveLookups lists reachable reflective method lookups.
+	ReflectiveLookups []ReflectiveLookup `json:"reflective_lookups"`
+	Tests             bool               `json:"tests"`
+	NestedModules     []string           `json:"nested_modules"`
 }
 
 type EntryPoint struct {
@@ -81,6 +85,29 @@ type State struct {
 	TestRoots          []string  `json:"test_roots"`
 	Witnesses          []Witness `json:"witnesses"`
 	ProvenanceComplete bool      `json:"witness_search_complete"`
+	// ReflectionReviewed marks a state made unreachable because every
+	// reflective method lookup in the analysis is reviewed.
+	ReflectionReviewed bool `json:"reflection_reviewed,omitempty"`
+}
+
+// ReflectiveLookup is a reachable call to reflect's method lookup by index or
+// name. Via calls the lookup; Entry is the first function outside the standard
+// library on a call path to Via, which is what a review considers.
+type ReflectiveLookup struct {
+	Analysis string `json:"analysis"`
+	Entry    string `json:"entry"`
+	Via      string `json:"via"`
+}
+
+// ReflectionReviewResult is a configured reflection review and whether it
+// matched a lookup entry.
+type ReflectionReviewResult struct {
+	ID          string `json:"id"`
+	Entry       string `json:"entry"`
+	Reason      string `json:"reason"`
+	ApprovedBy  string `json:"approved_by"`
+	ReviewAfter string `json:"review_after"`
+	Status      string `json:"status"`
 }
 
 type Witness struct {
@@ -219,7 +246,7 @@ func New(mode string) *Report {
 	return &Report{SchemaVersion: SchemaVersion, ToolVersion: ToolVersion, Mode: mode,
 		Complete: true, Scopes: []Scope{}, Symbols: []Symbol{}, Edges: []Edge{},
 		References: []Reference{}, Groups: []Group{}, Findings: []Finding{},
-		Exceptions: []ExceptionResult{}, Diagnostics: []Diagnostic{}, Plan: Plan{Waves: []Wave{}}, Notes: []Note{},
+		Exceptions: []ExceptionResult{}, ReflectionReviews: []ReflectionReviewResult{}, Diagnostics: []Diagnostic{}, Plan: Plan{Waves: []Wave{}}, Notes: []Note{},
 		Limitations: []string{
 			"Reachability is a conservative static approximation, not evidence of execution or assertion coverage.",
 			"Test witnesses are may-reach paths in a combined test-executable analysis; dynamic targets can be shared across tests and packages.",

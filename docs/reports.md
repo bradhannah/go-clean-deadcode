@@ -18,7 +18,11 @@ Structural validation is not semantic acceptance. A consumer should:
 ## Records
 
 - `scopes`: module/build selections, discovered/classified executable packages,
-  test inclusion and nested modules.
+  test inclusion and nested modules, and `reflective_lookups`: reachable
+  reflective method lookups per analysis, with the `via` caller and the `entry`
+  a reflection review names.
+- `reflection_reviews`: configured reviews with `matched`, `unmatched` or
+  `expired` status; the latter two count as stale exceptions.
 - `symbols`: qualified identities, declaration locations, normalized declaration
   fingerprint, generated/test-file flags, test-harness registration, per-scope
   production/test states, explanatory paths and known compile-time obligations.
@@ -33,7 +37,11 @@ Structural validation is not semantic acceptance. A consumer should:
   finding lists the live `reads` of its field.
 - `notes`: review information that is never a finding: an `unused_enum_value`
   is an unused value of a constant set otherwise in use, and a
-  `size_guard_field` is an unused field kept because it gives its struct a size.
+  `size_guard_field` is an unused field kept because it gives its struct a size,
+  a `reflection_retained` function or method is kept only because reflection
+  could call it and an entry into reflective method lookup is unreviewed, and
+  an `interface_conformance` method has no call path but an interface conversion
+  requires it.
 - `exceptions`: reasons, declared approval, review dates and match status.
 - `diagnostics`: scope/configuration/load errors and explicit exclusions.
 - `plan`: a simulated removal of every unresolved finding, in waves. Wave 1 is

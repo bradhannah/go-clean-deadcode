@@ -344,6 +344,58 @@
       ],
       "type": "object"
     },
+    "ReflectionReviewResult": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_by": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "review_after": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "entry",
+        "reason",
+        "approved_by",
+        "review_after",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ReflectiveLookup": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "via": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "analysis",
+        "entry",
+        "via"
+      ],
+      "type": "object"
+    },
     "Removal": {
       "additionalProperties": false,
       "properties": {
@@ -466,6 +518,15 @@
             "null"
           ]
         },
+        "reflection_reviews": {
+          "items": {
+            "$ref": "#/$defs/ReflectionReviewResult"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "schema_version": {
           "const": 1
         },
@@ -506,6 +567,7 @@
         "groups",
         "findings",
         "exceptions",
+        "reflection_reviews",
         "diagnostics",
         "summary",
         "plan",
@@ -572,6 +634,15 @@
             "null"
           ]
         },
+        "reflective_lookups": {
+          "items": {
+            "$ref": "#/$defs/ReflectiveLookup"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "tags": {
           "items": {
             "type": "string"
@@ -606,6 +677,7 @@
         "complete",
         "packages",
         "entry_points",
+        "reflective_lookups",
         "tests",
         "nested_modules"
       ],
@@ -625,6 +697,9 @@
             "array",
             "null"
           ]
+        },
+        "reflection_reviewed": {
+          "type": "boolean"
         },
         "scope": {
           "type": "string"

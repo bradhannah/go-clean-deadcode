@@ -25,6 +25,12 @@ func Text(w io.Writer, r *Report, only string) error {
 		for _, m := range s.NestedModules {
 			fmt.Fprintf(&b, "  Nested module: %s\n", m)
 		}
+		for _, l := range s.ReflectiveLookups {
+			fmt.Fprintf(&b, "  Reflective method lookup (%s): %s via %s\n", l.Analysis, l.Entry, l.Via)
+		}
+	}
+	for _, x := range r.ReflectionReviews {
+		fmt.Fprintf(&b, "  Reflection review %s [%s]: %s\n", x.ID, x.Status, x.Entry)
 	}
 	fmt.Fprintf(&b, "\nSummary\n  Unreachable functions: %d\n  Non-test functions reachable only in tests: %d\n  Unreachable test declarations: %d\n  Unresolved findings: %d\n  Accepted exceptions: %d\n  Stale exceptions: %d\n", r.Summary.Unreachable, r.Summary.TestOnly, r.Summary.UnusedTestHelpers, r.Summary.Unresolved, r.Summary.Accepted, r.Summary.StaleExceptions)
 	fmt.Fprintf(&b, "  Structural interface-marker methods: %d\n", r.Summary.StructuralMethods)
