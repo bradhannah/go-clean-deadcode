@@ -164,6 +164,9 @@
     "Module": {
       "additionalProperties": false,
       "properties": {
+        "api_roots": {
+          "type": "string"
+        },
         "entry_points": {
           "items": {
             "$ref": "#/$defs/EntryPoint"

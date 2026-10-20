@@ -36,4 +36,13 @@ func TestRejectAmbiguousConfiguration(t *testing.T) {
 	if c.Validate() == nil {
 		t.Fatal("duplicate config accepted")
 	}
+	c = Default()
+	c.Modules[0].APIRoots = "all"
+	if c.Validate() == nil {
+		t.Fatal("unknown api_roots mode accepted")
+	}
+	c.Modules[0].APIRoots = APIRootsExported
+	if err := c.Validate(); err != nil {
+		t.Fatalf("api_roots exported rejected: %v", err)
+	}
 }

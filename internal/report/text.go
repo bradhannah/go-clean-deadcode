@@ -16,6 +16,9 @@ func Text(w io.Writer, r *Report, only string) error {
 		for _, ep := range s.EntryPoints {
 			fmt.Fprintf(&b, "  Entry: %-12s %s (%s)\n", ep.Role, ep.Package, ep.Directory)
 		}
+		if s.APIRoots != "" {
+			fmt.Fprintf(&b, "  API roots: %s (exported functions and methods outside internal packages)\n", s.APIRoots)
+		}
 		for _, m := range s.NestedModules {
 			fmt.Fprintf(&b, "  Nested module: %s\n", m)
 		}

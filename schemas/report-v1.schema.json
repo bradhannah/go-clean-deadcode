@@ -409,6 +409,9 @@
     "Scope": {
       "additionalProperties": false,
       "properties": {
+        "api_roots": {
+          "type": "string"
+        },
         "cgo_enabled": {
           "type": "boolean"
         },

@@ -189,3 +189,57 @@ func TestCycleTraversalLarge(t *testing.T) {
 		t.Fatalf("cycle grouping: %d groups", len(g))
 	}
 }
+
+func libraryFixture(t *testing.T, apiRoots string) *report.Report {
+	t.Helper()
+	root, err := filepath.Abs("../../testdata/library")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := config.Default()
+	c.Modules[0].Library = apiRoots == ""
+	c.Modules[0].APIRoots = apiRoots
+	return Run(context.Background(), Options{Root: root, Config: c})
+}
+
+func TestExportedAPIRoots(t *testing.T) {
+	r := libraryFixture(t, config.APIRootsExported)
+	if !r.Complete {
+		t.Fatalf("incomplete: %+v", r.Diagnostics)
+	}
+	if r.Scopes[0].APIRoots != config.APIRootsExported {
+		t.Errorf("scope does not record api_roots: %+v", r.Scopes[0])
+	}
+	found := map[string]string{}
+	for _, f := range r.Findings {
+		found[f.Symbol] = f.Category
+	}
+	for name, want := range map[string]string{
+		"api.unusedHelper": "unreachable", "internal/core.Unused": "unreachable", "api.onlyTested": "test_only",
+	} {
+		if got := found["example.com/library/"+name]; got != want {
+			t.Errorf("%s: got %q want %q", name, got, want)
+		}
+	}
+	for _, name := range []string{"api.Exported", "api.helper", "internal/core.Used", "api.Engine.Run", "api.run",
+		"api.hidden.Value", "api.value", "api.New", "api.Map", "api.generic", "api.register",
+		"internal/core.Base.Promoted", "internal/core.promoted"} {
+		if got := found["example.com/library/"+name]; got != "" {
+			t.Errorf("API-reachable %s reported %s", name, got)
+		}
+	}
+}
+
+func TestLibraryWithoutAPIRootsReportsItsAPI(t *testing.T) {
+	r := libraryFixture(t, "")
+	if !r.Complete {
+		t.Fatalf("incomplete: %+v", r.Diagnostics)
+	}
+	found := map[string]string{}
+	for _, f := range r.Findings {
+		found[f.Symbol] = f.Category
+	}
+	if found["example.com/library/api.Exported"] != "unreachable" {
+		t.Errorf("library=true alone must not protect exported API: %v", found)
+	}
+}

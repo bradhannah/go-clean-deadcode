@@ -35,6 +35,7 @@ type Scope struct {
 	Complete      bool         `json:"complete"`
 	Packages      int          `json:"packages"`
 	EntryPoints   []EntryPoint `json:"entry_points"`
+	APIRoots      string       `json:"api_roots,omitempty"`
 	Tests         bool         `json:"tests"`
 	NestedModules []string     `json:"nested_modules"`
 }
