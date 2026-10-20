@@ -472,6 +472,15 @@
             "null"
           ]
         },
+        "test_support": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "tests": {
           "type": "boolean"
         }
@@ -553,6 +562,9 @@
         "accepted": {
           "type": "integer"
         },
+        "required_methods": {
+          "type": "integer"
+        },
         "stale_exceptions": {
           "type": "integer"
         },
@@ -583,7 +595,8 @@
         "unresolved",
         "accepted",
         "stale_exceptions",
-        "structural_methods"
+        "structural_methods",
+        "required_methods"
       ],
       "type": "object"
     },
@@ -642,6 +655,9 @@
           ]
         },
         "test_file": {
+          "type": "boolean"
+        },
+        "test_support": {
           "type": "boolean"
         }
       },

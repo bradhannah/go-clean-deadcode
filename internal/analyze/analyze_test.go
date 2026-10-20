@@ -248,3 +248,69 @@ func TestLibraryWithoutAPIRootsReportsItsAPI(t *testing.T) {
 		t.Errorf("library=true alone must not protect exported API: %v", found)
 	}
 }
+
+func findingsOf(r *report.Report) map[string]string {
+	found := map[string]string{}
+	for _, f := range r.Findings {
+		found[strings.TrimPrefix(f.Symbol, "example.com/sample/")] = f.Category
+	}
+	return found
+}
+
+func TestAssertedInterfaceMethodsAreRequired(t *testing.T) {
+	root, c := fixture(t)
+	r := Run(context.Background(), Options{Root: root, Config: c})
+	if !r.Complete {
+		t.Fatalf("incomplete: %+v", r.Diagnostics)
+	}
+	found := findingsOf(r)
+	for _, name := range []string{"lib.job.label", "lib.fakeJob.label"} {
+		if got := found[name]; got != "" {
+			t.Errorf("%s satisfies an asserted interface but was reported %s", name, got)
+		}
+	}
+	if found["lib.idleJob.label"] != "unreachable" {
+		t.Errorf("idleJob never reaches the assertion; got %q", found["lib.idleJob.label"])
+	}
+	required := false
+	for _, s := range r.Symbols {
+		if s.ID == "example.com/sample/lib.job.label" {
+			for _, o := range s.Obligations {
+				required = required || o.Kind == "assertion_satisfaction"
+			}
+		}
+	}
+	if !required || r.Summary.RequiredMethods < 2 {
+		t.Errorf("assertion obligation missing: required=%v summary=%+v", required, r.Summary)
+	}
+}
+
+func TestTestSupportDeclarationsAreTestHelpers(t *testing.T) {
+	root, c := fixture(t)
+	r := Run(context.Background(), Options{Root: root, Config: c})
+	without := findingsOf(r)
+	if without["lib.SupportOnly"] != "test_only" || without["testkit.Helper"] != "test_only" ||
+		without["testkit.Orphan"] != "unreachable" {
+		t.Fatalf("baseline classification changed: %v", without)
+	}
+	c.Modules[0].TestSupport = []string{"./testkit", "./lib/support.go"}
+	r = Run(context.Background(), Options{Root: root, Config: c})
+	if !r.Complete {
+		t.Fatalf("incomplete: %+v", r.Diagnostics)
+	}
+	with := findingsOf(r)
+	for _, name := range []string{"lib.SupportOnly", "testkit.Helper"} {
+		if got := with[name]; got != "" {
+			t.Errorf("used test support %s reported %s", name, got)
+		}
+	}
+	if with["testkit.Orphan"] != "unused_test_helper" {
+		t.Errorf("unused test support should be an unused test helper; got %q", with["testkit.Orphan"])
+	}
+	if with["lib.Legacy"] != "test_only" {
+		t.Errorf("production code outside test support is unaffected; got %q", with["lib.Legacy"])
+	}
+	if got := r.Scopes[0].TestSupport; len(got) != 2 {
+		t.Errorf("scope does not record test support: %v", got)
+	}
+}

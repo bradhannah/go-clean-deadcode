@@ -64,6 +64,13 @@ The engine does not yet enumerate every return, argument conversion, embedding,
 or generic constraint requirement. Lack of an obligation record never establishes
 independent deletability. Recognized empty private interface marker methods remain
 in the symbol inventory and structural count without creating runtime findings.
+A method a runtime type needs to satisfy an interface that reachable code checks
+with a type assertion or type switch is required even when nothing calls it:
+removing it still compiles but silently changes which branch runs. Such methods
+carry an `assertion_satisfaction` obligation, create no finding, and are counted
+as `required_methods`. Reachability already keeps exported methods of runtime
+types, so this matters most for unexported interface methods, such as a test
+fake checked by production code.
 Methods with no Go body retain an explicit native/assembly review note. Blank
 functions (`func _()`) are not inventoried: nothing can call them, and they exist
 only as compile-time assertions, such as `stringer`'s constant checks.

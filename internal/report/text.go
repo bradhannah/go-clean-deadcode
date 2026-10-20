@@ -16,6 +16,9 @@ func Text(w io.Writer, r *Report, only string) error {
 		for _, ep := range s.EntryPoints {
 			fmt.Fprintf(&b, "  Entry: %-12s %s (%s)\n", ep.Role, ep.Package, ep.Directory)
 		}
+		for _, entry := range s.TestSupport {
+			fmt.Fprintf(&b, "  Test support: %s\n", entry)
+		}
 		if s.APIRoots != "" {
 			fmt.Fprintf(&b, "  API roots: %s (exported functions and methods outside internal packages)\n", s.APIRoots)
 		}
@@ -25,6 +28,7 @@ func Text(w io.Writer, r *Report, only string) error {
 	}
 	fmt.Fprintf(&b, "\nSummary\n  Unreachable functions: %d\n  Non-test functions reachable only in tests: %d\n  Unreachable test declarations: %d\n  Unresolved findings: %d\n  Accepted exceptions: %d\n  Stale exceptions: %d\n", r.Summary.Unreachable, r.Summary.TestOnly, r.Summary.UnusedTestHelpers, r.Summary.Unresolved, r.Summary.Accepted, r.Summary.StaleExceptions)
 	fmt.Fprintf(&b, "  Structural interface-marker methods: %d\n", r.Summary.StructuralMethods)
+	fmt.Fprintf(&b, "  Methods required by asserted interfaces: %d\n", r.Summary.RequiredMethods)
 	byID := map[string]Symbol{}
 	for _, s := range r.Symbols {
 		byID[s.ID] = s

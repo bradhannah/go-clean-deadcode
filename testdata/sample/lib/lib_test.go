@@ -1,6 +1,10 @@
 package lib
 
-import "testing"
+import (
+	"testing"
+
+	"example.com/sample/testkit"
+)
 
 func TestLegacy(t *testing.T) { Legacy(); t.Helper() }
 func unusedTestHelper()       {}
@@ -18,3 +22,10 @@ func BenchmarkLegacy(b *testing.B) {
 func FuzzLegacy(f *testing.F) { f.Add("input"); f.Fuzz(func(t *testing.T, s string) { Legacy() }) }
 
 func TestNested(t *testing.T) { t.Run("case", func(t *testing.T) { SubtestOnly() }) }
+
+type fakeJob struct{}
+
+func (fakeJob) finish(int)    {}
+func (fakeJob) label() string { return "fake" }
+
+func TestRunJob(t *testing.T) { RunJob(fakeJob{}); SupportOnly(); testkit.Helper(); t.Helper() }

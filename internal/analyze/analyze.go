@@ -182,7 +182,7 @@ func (e *engine) load(ctx context.Context, m config.Module, v config.Configurati
 
 func (e *engine) scope(ctx context.Context, m config.Module, v config.Configuration, nested []string, discover bool) {
 	id := filepath.ToSlash(m.Path) + "@" + v.Name
-	s := report.Scope{ID: id, Module: m.Path, Configuration: v.Name, GOOS: v.GOOS, GOARCH: v.GOARCH, Tags: append([]string{}, v.Tags...), CGOEnabled: v.CGOEnabled, Tests: m.IncludeTests(), EntryPoints: []report.EntryPoint{}, APIRoots: m.APIRoots, NestedModules: append([]string{}, nested...)}
+	s := report.Scope{ID: id, Module: m.Path, Configuration: v.Name, GOOS: v.GOOS, GOARCH: v.GOARCH, Tags: append([]string{}, v.Tags...), CGOEnabled: v.CGOEnabled, Tests: m.IncludeTests(), EntryPoints: []report.EntryPoint{}, APIRoots: m.APIRoots, TestSupport: append([]string{}, m.TestSupport...), NestedModules: append([]string{}, nested...)}
 	s.Patterns = append([]string{}, m.Patterns...)
 	defer func() {
 		for _, d := range e.report.Diagnostics {
@@ -275,7 +275,7 @@ func (e *engine) scope(ctx context.Context, m config.Module, v config.Configurat
 		return
 	}
 	s.Packages = len(prod)
-	if err = e.program(ctx, prod, moduleDir, id, "production", selected, m.APIRoots == config.APIRootsExported); err != nil {
+	if err = e.program(ctx, prod, moduleDir, id, "production", selected, m); err != nil {
 		e.report.Error("analysis", id, err.Error())
 		return
 	}
@@ -286,7 +286,7 @@ func (e *engine) scope(ctx context.Context, m config.Module, v config.Configurat
 			e.report.Error("test_load", id, err.Error())
 			return
 		}
-		if err = e.program(ctx, tests, moduleDir, id, "tests", selected, false); err != nil {
+		if err = e.program(ctx, tests, moduleDir, id, "tests", selected, m); err != nil {
 			e.report.Error("test_analysis", id, err.Error())
 			return
 		}
@@ -345,6 +345,55 @@ func apiRoots(prog *ssa.Program, p *ssa.Package) []*ssa.Function {
 		}
 	}
 	return roots
+}
+
+// assertionObligations records the methods a runtime type needs to satisfy an
+// interface that reachable code checks with a type assertion or type switch.
+// Removing such a method still compiles but silently changes which branch runs.
+func (e *engine) assertionObligations(prog *ssa.Program, res *rta.Result, scope string) {
+	asserted := map[*types.Interface]string{}
+	for fn := range res.Reachable {
+		for _, block := range fn.Blocks {
+			for _, instruction := range block.Instrs {
+				assertion, ok := instruction.(*ssa.TypeAssert)
+				if !ok {
+					continue
+				}
+				if iface, ok := assertion.AssertedType.Underlying().(*types.Interface); ok && iface.NumMethods() > 0 {
+					asserted[iface] = types.TypeString(assertion.AssertedType, nil)
+				}
+			}
+		}
+	}
+	recorded := map[string]bool{}
+	res.RuntimeTypes.Iterate(func(runtime types.Type, _ any) {
+		methods := prog.MethodSets.MethodSet(runtime)
+		for iface, name := range asserted {
+			if !types.Implements(runtime, iface) {
+				continue
+			}
+			for method := range iface.Methods() {
+				selection := methods.Lookup(method.Pkg(), method.Name())
+				if selection == nil {
+					continue
+				}
+				fn, ok := selection.Obj().(*types.Func)
+				if !ok {
+					continue
+				}
+				id := objectID(fn)
+				symbol := e.symbols[id]
+				key := scope + "\x00" + id + "\x00" + name + "\x00" + types.TypeString(runtime, nil)
+				if symbol == nil || len(symbol.Locations) == 0 || recorded[key] {
+					continue
+				}
+				recorded[key] = true
+				symbol.Obligations = append(symbol.Obligations, report.Obligation{Scope: scope, Kind: "assertion_satisfaction",
+					Description: "Required for " + types.TypeString(runtime, nil) + " to satisfy " + name +
+						", which reachable code checks with a type assertion or type switch.", Location: symbol.Locations[0]})
+			}
+		}
+	})
 }
 
 func within(root, path string) bool {
@@ -412,7 +461,8 @@ func (e *engine) state(id, scope string) *report.State {
 	return s
 }
 
-func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, scope, kind string, selected map[string]string, api bool) error {
+func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, scope, kind string, selected map[string]string, module config.Module) error {
+	api := kind == "production" && module.APIRoots == config.APIRootsExported
 	t := time.Now()
 	prog, ssapkgs := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics)
 	e.log(scope + " " + kind + ": inventory")
@@ -509,6 +559,9 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 				x := e.symbols[id]
 				if x == nil {
 					x = &report.Symbol{ID: id, Package: p.PkgPath, Name: obj.Name(), Kind: "function", TestFile: strings.HasSuffix(path, "_test.go"), Generated: ast.IsGenerated(file), Locations: []report.Location{}, States: []report.State{}, Obligations: []report.Obligation{}}
+					if rel, err := filepath.Rel(dir, path); err == nil && !x.TestFile {
+						x.TestSupport = module.IsTestSupport(rel)
+					}
 					if r := obj.Type().(*types.Signature).Recv(); r != nil {
 						x.Kind = "method"
 						x.Receiver = types.TypeString(r.Type(), func(*types.Package) string { return "" })
@@ -592,6 +645,7 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	e.assertionObligations(prog, res, scope)
 	labels := rootLabels
 	if kind == "tests" {
 		labels = map[*ssa.Function]string{}
@@ -651,7 +705,7 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 				w = []report.Witness{p}
 			}
 		} else {
-			if s.Production == "reachable" || e.symbols[id].TestFile {
+			if s.Production == "reachable" || e.symbols[id].TestFile || e.symbols[id].TestSupport {
 				continue
 			}
 			w, complete = witnesses(index, fn, labels, kind)
