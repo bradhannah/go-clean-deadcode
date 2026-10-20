@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -133,7 +134,7 @@ func (c Config) Validate() error {
 			}
 		}
 		for _, entry := range m.TestSupport {
-			if !strings.HasPrefix(entry, "./") || strings.Contains(entry, "..") {
+			if !strings.HasPrefix(entry, "./") || slices.Contains(strings.Split(entry, "/"), "..") {
 				return fmt.Errorf("module %s: test_support entries must be ./ module-relative: %q", m.Path, entry)
 			}
 		}

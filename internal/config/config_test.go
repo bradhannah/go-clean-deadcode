@@ -45,11 +45,15 @@ func TestRejectAmbiguousConfiguration(t *testing.T) {
 	if err := c.Validate(); err != nil {
 		t.Fatalf("api_roots exported rejected: %v", err)
 	}
-	for _, entry := range []string{"test", "/abs", "./../escape"} {
+	for _, entry := range []string{"test", "/abs", "./../escape", "./a/../../b"} {
 		c.Modules[0].TestSupport = []string{entry}
 		if c.Validate() == nil {
 			t.Fatalf("test_support entry %q accepted", entry)
 		}
+	}
+	c.Modules[0].TestSupport = []string{"./test/...", "./internal/fakes", "./internal/game/mock.go"}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("valid test_support entries rejected: %v", err)
 	}
 }
 
