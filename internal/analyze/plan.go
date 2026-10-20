@@ -39,7 +39,7 @@ func newPlanGraph(r *report.Report) *planGraph {
 	// support: a helper's reference matters as much as a test's.
 	for _, ref := range r.References {
 		from := g.symbols[ref.From]
-		if from == nil || !(from.RegisteredTest || from.TestFile || from.TestSupport) || g.symbols[ref.Symbol] == nil {
+		if from == nil || !from.RegisteredTest && !from.TestFile && !from.TestSupport || g.symbols[ref.Symbol] == nil {
 			continue
 		}
 		if g.references[ref.From] == nil {
