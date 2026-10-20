@@ -40,6 +40,9 @@ type engine struct {
 	refs     map[report.Reference]bool
 	progress func(string)
 	bodies   map[string]map[string]bool
+	decl     *declarationEvidence
+	// significant holds struct types whose field layout must not change.
+	significant map[string]bool
 }
 
 func Run(ctx context.Context, opt Options) (result *report.Report) {
@@ -51,6 +54,7 @@ func Run(ctx context.Context, opt Options) (result *report.Report) {
 	e := &engine{root: opt.Root, report: report.New(mode), symbols: map[string]*report.Symbol{}, states: map[string]map[string]*report.State{}, edges: map[report.Edge]bool{}, refs: map[report.Reference]bool{}}
 	e.progress = opt.Progress
 	e.bodies = map[string]map[string]bool{}
+	e.decl = newDeclarationEvidence()
 	defer func() {
 		if p := recover(); p != nil {
 			e.report.Error("analysis_panic", "", fmt.Sprintf("analysis failed: %v", p))
@@ -536,13 +540,31 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 				}
 			}
 		}
-		for _, file := range p.Syntax {
+		local := func(file *ast.File) (string, bool) {
 			path := p.Fset.Position(file.Pos()).Filename
-			if !within(dir, path) || (p.Module != nil && filepath.Clean(p.Module.Dir) != filepath.Clean(dir)) {
+			return path, within(dir, path) && (p.Module == nil || filepath.Clean(p.Module.Dir) == filepath.Clean(dir))
+		}
+		// Inventory every package-level declaration before recording any use.
+		for _, file := range p.Syntax {
+			if path, ok := local(file); ok {
+				for _, decl := range file.Decls {
+					if g, ok := decl.(*ast.GenDecl); ok {
+						e.declare(p, file, g, path, scope, kind, module, dir, api && apiPackage(p.Types))
+					}
+				}
+			}
+		}
+		for _, file := range p.Syntax {
+			path, ok := local(file)
+			if !ok {
 				continue
 			}
 			initOrdinal := 0
 			for _, decl := range file.Decls {
+				if g, ok := decl.(*ast.GenDecl); ok {
+					e.declarationUses(p, g)
+					continue
+				}
 				d, ok := decl.(*ast.FuncDecl)
 				if !ok {
 					continue
@@ -561,6 +583,7 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 					initOrdinal++
 					id += "@" + e.location(p.Fset, d.Pos()).File + fmt.Sprintf("#%d", initOrdinal)
 				}
+				e.recordUses(p, d, id)
 				fn := prog.FuncValue(obj)
 				if fn == nil {
 					continue
@@ -696,6 +719,7 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 			continue
 		}
 		targets[fn] = true
+		e.reachableFunction(scope, kind, id)
 		s := e.state(id, scope)
 		if kind == "production" {
 			s.Production = "reachable"

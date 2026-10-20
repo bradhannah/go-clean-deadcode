@@ -20,6 +20,7 @@ type Report struct {
 	Diagnostics   []Diagnostic      `json:"diagnostics"`
 	Summary       Summary           `json:"summary"`
 	Plan          Plan              `json:"plan"`
+	Notes         []Note            `json:"notes"`
 	Metrics       Metrics           `json:"metrics"`
 	Limitations   []string          `json:"limitations"`
 }
@@ -124,19 +125,22 @@ type Group struct {
 // exposes, until nothing new becomes unused. It never edits source; the waves
 // describe what repeated clean-up passes would each find.
 type Plan struct {
-	Waves     []Wave `json:"waves"`
-	Functions int    `json:"functions"`
-	Tests     int    `json:"tests"`
-	Lines     int    `json:"lines"`
+	Waves        []Wave `json:"waves"`
+	Functions    int    `json:"functions"`
+	Declarations int    `json:"declarations"`
+	Tests        int    `json:"tests"`
+	Lines        int    `json:"lines"`
 }
 
 type Wave struct {
-	Number      int       `json:"number"`
-	Removals    []Removal `json:"removals"`
-	Functions   int       `json:"functions"`
-	TestHelpers int       `json:"test_helpers"`
-	Tests       int       `json:"tests"`
-	Lines       int       `json:"lines"`
+	Number    int       `json:"number"`
+	Removals  []Removal `json:"removals"`
+	Functions int       `json:"functions"`
+	// Declarations counts types, fields, constants and variables.
+	Declarations int `json:"declarations"`
+	TestHelpers  int `json:"test_helpers"`
+	Tests        int `json:"tests"`
+	Lines        int `json:"lines"`
 	// Tests that stay but directly reference something this wave removes; each
 	// needs an edit, and may be a live-behaviour test using it as a fixture.
 	TestsNeedingEdits []string `json:"tests_needing_edits"`
@@ -160,6 +164,16 @@ type Finding struct {
 	Scopes    []string `json:"scopes"`
 	Status    string   `json:"status"`
 	Exception string   `json:"exception,omitempty"`
+	// Reads lists where live code reads a never_assigned field.
+	Reads []Location `json:"reads,omitempty"`
+}
+
+// Note is review information that is never a finding, such as an unused value
+// of an enum that is otherwise in use.
+type Note struct {
+	Symbol  string `json:"symbol"`
+	Kind    string `json:"kind"`
+	Message string `json:"message"`
 }
 
 type ExceptionResult struct {
@@ -189,6 +203,8 @@ type Summary struct {
 	StaleExceptions   int `json:"stale_exceptions"`
 	StructuralMethods int `json:"structural_methods"`
 	RequiredMethods   int `json:"required_methods"`
+	NeverAssigned     int `json:"never_assigned"`
+	Notes             int `json:"notes"`
 }
 
 type Metrics struct {
@@ -203,7 +219,7 @@ func New(mode string) *Report {
 	return &Report{SchemaVersion: SchemaVersion, ToolVersion: ToolVersion, Mode: mode,
 		Complete: true, Scopes: []Scope{}, Symbols: []Symbol{}, Edges: []Edge{},
 		References: []Reference{}, Groups: []Group{}, Findings: []Finding{},
-		Exceptions: []ExceptionResult{}, Diagnostics: []Diagnostic{}, Plan: Plan{Waves: []Wave{}},
+		Exceptions: []ExceptionResult{}, Diagnostics: []Diagnostic{}, Plan: Plan{Waves: []Wave{}}, Notes: []Note{},
 		Limitations: []string{
 			"Reachability is a conservative static approximation, not evidence of execution or assertion coverage.",
 			"Test witnesses are may-reach paths in a combined test-executable analysis; dynamic targets can be shared across tests and packages.",

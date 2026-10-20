@@ -46,6 +46,15 @@ func (e *engine) finalize(c config.Config) {
 			e.report.Edges = append(e.report.Edges, edge)
 		}
 	}
+	e.significant = e.declarationStates()
+	liveAny := map[string]bool{}
+	for id, states := range e.states {
+		for _, st := range states {
+			liveAny[id] = liveAny[id] || st.Production == "reachable" || st.Tests == "reachable"
+		}
+	}
+	live := func(id string) bool { return liveAny[id] }
+	liveGroups := e.liveEnumGroups(live)
 	for id, s := range e.symbols {
 		bodies := make([]string, 0, len(e.bodies[id]))
 		for b := range e.bodies[id] {
@@ -95,10 +104,28 @@ func (e *engine) finalize(c config.Config) {
 			}
 		}
 		if category != "" {
+			if kept, note := e.keptDeclaration(id, e.significant, liveGroups, live); kept {
+				category = ""
+				if note != "" {
+					e.report.Notes = append(e.report.Notes, report.Note{Symbol: id, Kind: "unused_enum_value", Message: note})
+				}
+			}
+		}
+		if category != "" {
 			sort.Strings(scopes)
 			e.report.Findings = append(e.report.Findings, report.Finding{ID: "F-" + digest(category+"\x00"+id), Category: category, Symbol: id, Scopes: scopes, Status: "unresolved"})
 		}
 	}
+	for id, reads := range e.neverAssigned(e.significant, live) {
+		var scopes []string
+		for _, st := range e.symbols[id].States {
+			scopes = append(scopes, st.Scope)
+		}
+		sort.Strings(scopes)
+		e.report.Findings = append(e.report.Findings, report.Finding{ID: "F-" + digest("never_assigned\x00"+id),
+			Category: "never_assigned", Symbol: id, Scopes: scopes, Status: "unresolved", Reads: reads})
+	}
+	sort.Slice(e.report.Notes, func(i, j int) bool { return e.report.Notes[i].Symbol < e.report.Notes[j].Symbol })
 	sort.Slice(e.report.Symbols, func(i, j int) bool { return e.report.Symbols[i].ID < e.report.Symbols[j].ID })
 	sort.Slice(e.report.Findings, func(i, j int) bool { return e.report.Findings[i].Symbol < e.report.Findings[j].Symbol })
 	e.report.Edges = unique(e.report.Edges)
@@ -141,6 +168,8 @@ func (e *engine) finalize(c config.Config) {
 			e.report.Summary.TestOnly++
 		case "unused_test_helper":
 			e.report.Summary.UnusedTestHelpers++
+		case "never_assigned":
+			e.report.Summary.NeverAssigned++
 		}
 		if f.Status == "accepted" {
 			e.report.Summary.Accepted++
@@ -149,6 +178,7 @@ func (e *engine) finalize(c config.Config) {
 		}
 	}
 	e.report.Summary.Symbols = len(e.report.Symbols)
+	e.report.Summary.Notes = len(e.report.Notes)
 	e.report.Diagnostics = unique(e.report.Diagnostics)
 	e.report.Plan = e.plan()
 }

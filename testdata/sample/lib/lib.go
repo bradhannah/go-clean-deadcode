@@ -1,5 +1,7 @@
 package lib
 
+import "encoding/binary"
+
 func Live()         {}
 func Utility()      {}
 func Legacy()       { legacyHelper() }
@@ -74,3 +76,61 @@ func RunJob(x any) {
 // Obsolete is reached only by tests; removing it also removes TestObsolete and
 // then exposes obsoleteSetup, which only TestObsolete called.
 func Obsolete() {}
+
+// Shape is an enum in use: Square is an unused value, which is a note only.
+type Shape int
+
+const (
+	Circle Shape = iota
+	Square
+)
+
+func currentShape() Shape { return Circle }
+
+func ShapeName() string {
+	if currentShape() == Circle {
+		return "circle"
+	}
+	return ""
+}
+
+// Nothing uses these declarations.
+type deadConfig struct{ size int }
+
+const deadLimit = 3
+
+var deadTable = []int{1}
+
+// registry's initializer has effects, so it stays although nothing reads it.
+var registry = register()
+
+func register() int { return 1 }
+
+// settings has an unused field, a never-assigned field, an exported field and a
+// tagged field; only the first two are findings.
+type settings struct {
+	name     string
+	unused   int
+	enabled  bool
+	Exported int
+	tagged   int `layout:"t"`
+}
+
+func Settings() string {
+	s := settings{name: "x"}
+	if s.enabled {
+		return "on"
+	}
+	return s.name
+}
+
+// header is laid out by encoding/binary, so its unused field stays.
+type header struct {
+	magic uint32
+	spare uint16
+}
+
+func HeaderSize() int { return binary.Size(header{}) }
+
+// testOnlyKind is used only by tests.
+type testOnlyKind struct{}
