@@ -490,6 +490,11 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 				if !ok {
 					continue
 				}
+				if d.Name.Name == "_" {
+					// A blank function can never be called; it is a compile-time
+					// assertion, such as stringer's constant checks.
+					continue
+				}
 				id := objectID(obj)
 				if d.Name.Name == "init" {
 					initOrdinal++

@@ -44,6 +44,11 @@ func TestReachabilityEvidence(t *testing.T) {
 			t.Errorf("live %s reported %s", name, got)
 		}
 	}
+	for symbol := range found {
+		if strings.HasSuffix(symbol, "._") {
+			t.Errorf("blank compile-time assertion reported as %s", found[symbol])
+		}
+	}
 	if found["example.com/sample/lib.Real.unrelatedEmpty"] != "unreachable" {
 		t.Error("unrelated empty private method mistaken for an interface marker")
 	}

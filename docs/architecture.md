@@ -64,7 +64,9 @@ The engine does not yet enumerate every return, argument conversion, embedding,
 or generic constraint requirement. Lack of an obligation record never establishes
 independent deletability. Recognized empty private interface marker methods remain
 in the symbol inventory and structural count without creating runtime findings.
-Methods with no Go body retain an explicit native/assembly review note.
+Methods with no Go body retain an explicit native/assembly review note. Blank
+functions (`func _()`) are not inventoried: nothing can call them, and they exist
+only as compile-time assertions, such as `stringer`'s constant checks.
 
 Assembly, `go:linkname`, external consumers and native callbacks are limitations.
 The tool reports function/method declarations, not all unused fields/variables or
