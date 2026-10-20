@@ -499,3 +499,30 @@ func TestUnmatchedReflectionReviewIsStale(t *testing.T) {
 		t.Fatalf("review: %+v stale=%d findings=%v", r.ReflectionReviews, r.Summary.StaleExceptions, reflectionFindings(r))
 	}
 }
+
+func TestAliasedAssertionsAreDeterministic(t *testing.T) {
+	var first []byte
+	for range 5 {
+		r := reflectionFixture(t)
+		r.Metrics = report.Metrics{}
+		data, _ := json.Marshal(r)
+		if first == nil {
+			first = data
+			for _, s := range r.Symbols {
+				if !strings.HasSuffix(s.ID, "shop.item.describe") {
+					continue
+				}
+				if len(s.Obligations) == 0 {
+					t.Error("item.describe needs an assertion obligation")
+				}
+				for _, o := range s.Obligations {
+					if !strings.Contains(o.Description, "shop.Describer or example.com/reflection/shop.DescriberAlias") {
+						t.Errorf("an aliased assertion must name every name: %s", o.Description)
+					}
+				}
+			}
+		} else if string(data) != string(first) {
+			t.Fatal("equivalent input produced nondeterministic report")
+		}
+	}
+}

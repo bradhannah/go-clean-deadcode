@@ -65,6 +65,8 @@ func (e *engine) finalize(c config.Config) {
 	}
 	liveGroups := e.liveEnumGroups(inProduction)
 	for id, s := range e.symbols {
+		// Obligations are recorded while walking maps; order them for stable output.
+		s.Obligations = unique(s.Obligations)
 		bodies := make([]string, 0, len(e.bodies[id]))
 		for b := range e.bodies[id] {
 			bodies = append(bodies, b)
@@ -140,7 +142,10 @@ func (e *engine) finalize(c config.Config) {
 	}
 	e.report.Notes = append(e.report.Notes, e.sizeGuardNotes(e.significant, live)...)
 	e.report.Notes = append(e.report.Notes, reflectionNotes...)
-	sort.Slice(e.report.Notes, func(i, j int) bool { return e.report.Notes[i].Symbol < e.report.Notes[j].Symbol })
+	sort.Slice(e.report.Notes, func(i, j int) bool {
+		a, b := e.report.Notes[i], e.report.Notes[j]
+		return a.Symbol < b.Symbol || a.Symbol == b.Symbol && a.Kind < b.Kind
+	})
 	sort.Slice(e.report.Symbols, func(i, j int) bool { return e.report.Symbols[i].ID < e.report.Symbols[j].ID })
 	sort.Slice(e.report.Findings, func(i, j int) bool { return e.report.Findings[i].Symbol < e.report.Findings[j].Symbol })
 	e.report.Edges = unique(e.report.Edges)

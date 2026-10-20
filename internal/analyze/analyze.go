@@ -380,7 +380,8 @@ func (e *engine) owner(index *graphIndex, fn *ssa.Function) string {
 // interface that reachable code checks with a type assertion or type switch.
 // Removing such a method still compiles but silently changes which branch runs.
 func (e *engine) assertionObligations(prog *ssa.Program, res *rta.Result, scope string) {
-	asserted := map[*types.Interface]string{}
+	// One interface can be asserted under several names, such as an alias.
+	asserted := map[*types.Interface]map[string]bool{}
 	for fn := range res.Reachable {
 		for _, block := range fn.Blocks {
 			for _, instruction := range block.Instrs {
@@ -389,7 +390,10 @@ func (e *engine) assertionObligations(prog *ssa.Program, res *rta.Result, scope 
 					continue
 				}
 				if iface, ok := assertion.AssertedType.Underlying().(*types.Interface); ok && iface.NumMethods() > 0 {
-					asserted[iface] = types.TypeString(assertion.AssertedType, nil)
+					if asserted[iface] == nil {
+						asserted[iface] = map[string]bool{}
+					}
+					asserted[iface][types.TypeString(assertion.AssertedType, nil)] = true
 				}
 			}
 		}
@@ -397,10 +401,16 @@ func (e *engine) assertionObligations(prog *ssa.Program, res *rta.Result, scope 
 	recorded := map[string]bool{}
 	res.RuntimeTypes.Iterate(func(runtime types.Type, _ any) {
 		methods := prog.MethodSets.MethodSet(runtime)
-		for iface, name := range asserted {
+		for iface, names := range asserted {
 			if !types.Implements(runtime, iface) {
 				continue
 			}
+			sorted := make([]string, 0, len(names))
+			for n := range names {
+				sorted = append(sorted, n)
+			}
+			sort.Strings(sorted)
+			name := strings.Join(sorted, " or ")
 			for method := range iface.Methods() {
 				selection := methods.Lookup(method.Pkg(), method.Name())
 				if selection == nil {

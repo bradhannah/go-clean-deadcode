@@ -10,4 +10,5 @@ func main() {
 	_ = shop.Print()
 	_ = shop.Count()
 	_ = shop.Tallies()
+	_ = shop.Describe()
 }

@@ -41,3 +41,21 @@ type tag struct{}
 func (tag) Label() string { return "tag" }
 
 func unusedLabel() Labeler { return tag{} }
+
+// Describer is asserted under its own name and through an alias, so its
+// obligations must name both, in a stable order.
+type Describer interface{ describe() string }
+
+type DescriberAlias = Describer
+
+type item struct{}
+
+func (item) describe() string { return "item" }
+
+// Describe checks an item.
+func Describe() bool {
+	var v any = item{}
+	_, named := v.(Describer)
+	_, aliased := v.(DescriberAlias)
+	return named || aliased
+}
