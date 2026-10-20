@@ -21,7 +21,10 @@
 Modules resolve against `--root`; entry directories/patterns against their module.
 Use exact import paths or relative executable directories. Entry points can have
 `configurations: ["linux"]`. Libraries explicitly set `library: true` when there
-is no executable. External API reachability is not inferred from tests.
+is no executable. External API reachability is not inferred from tests. A library
+whose importers live elsewhere sets `api_roots: "exported"`, so its exported
+functions and methods outside `internal` packages count as reachable; unexported
+and internal code still needs a path from that API.
 
 Nested modules require another module record or `excluded_modules` entries with
 `path` and `reason`. `ignored_mains` inside a module similarly needs exact path and

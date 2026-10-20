@@ -182,7 +182,7 @@ func (e *engine) load(ctx context.Context, m config.Module, v config.Configurati
 
 func (e *engine) scope(ctx context.Context, m config.Module, v config.Configuration, nested []string, discover bool) {
 	id := filepath.ToSlash(m.Path) + "@" + v.Name
-	s := report.Scope{ID: id, Module: m.Path, Configuration: v.Name, GOOS: v.GOOS, GOARCH: v.GOARCH, Tags: append([]string{}, v.Tags...), CGOEnabled: v.CGOEnabled, Tests: m.IncludeTests(), EntryPoints: []report.EntryPoint{}, NestedModules: append([]string{}, nested...)}
+	s := report.Scope{ID: id, Module: m.Path, Configuration: v.Name, GOOS: v.GOOS, GOARCH: v.GOARCH, Tags: append([]string{}, v.Tags...), CGOEnabled: v.CGOEnabled, Tests: m.IncludeTests(), EntryPoints: []report.EntryPoint{}, APIRoots: m.APIRoots, NestedModules: append([]string{}, nested...)}
 	s.Patterns = append([]string{}, m.Patterns...)
 	defer func() {
 		for _, d := range e.report.Diagnostics {
@@ -265,8 +265,8 @@ func (e *engine) scope(ctx context.Context, m config.Module, v config.Configurat
 		s.Complete = true
 		return
 	}
-	if len(selected) == 0 && !m.Library {
-		e.report.Error("no_roots", id, "no selected executable; library scopes must explicitly set library=true")
+	if len(selected) == 0 && !m.Library && m.APIRoots == "" {
+		e.report.Error("no_roots", id, "no selected executable; library scopes must explicitly set library=true or api_roots")
 		return
 	}
 	prod, err := e.load(ctx, m, v, false, m.Patterns, true)
@@ -275,7 +275,7 @@ func (e *engine) scope(ctx context.Context, m config.Module, v config.Configurat
 		return
 	}
 	s.Packages = len(prod)
-	if err = e.program(ctx, prod, moduleDir, id, "production", selected); err != nil {
+	if err = e.program(ctx, prod, moduleDir, id, "production", selected, m.APIRoots == config.APIRootsExported); err != nil {
 		e.report.Error("analysis", id, err.Error())
 		return
 	}
@@ -286,12 +286,65 @@ func (e *engine) scope(ctx context.Context, m config.Module, v config.Configurat
 			e.report.Error("test_load", id, err.Error())
 			return
 		}
-		if err = e.program(ctx, tests, moduleDir, id, "tests", selected); err != nil {
+		if err = e.program(ctx, tests, moduleDir, id, "tests", selected, false); err != nil {
 			e.report.Error("test_analysis", id, err.Error())
 			return
 		}
 	}
 	s.Complete = true
+}
+
+// apiPackage reports whether importers outside the module can use pkg: it is
+// not a command and no element of its import path is "internal".
+func apiPackage(pkg *types.Package) bool {
+	return pkg.Name() != "main" && !slices.Contains(strings.Split(pkg.Path(), "/"), "internal")
+}
+
+// apiRoots returns what an importer of p can run: package initialization,
+// exported functions, exported methods declared on any of its types (an
+// importer reaches unexported types through returned values and interfaces),
+// and the exported promoted methods of its exported non-generic types.
+func apiRoots(prog *ssa.Program, p *ssa.Package) []*ssa.Function {
+	var roots []*ssa.Function
+	if f := p.Func("init"); f != nil {
+		roots = append(roots, f)
+	}
+	for _, name := range p.Pkg.Scope().Names() {
+		switch obj := p.Pkg.Scope().Lookup(name).(type) {
+		case *types.Func:
+			if obj.Exported() {
+				if f := prog.FuncValue(obj); f != nil {
+					roots = append(roots, f)
+				}
+			}
+		case *types.TypeName:
+			named, ok := obj.Type().(*types.Named)
+			if !ok || obj.IsAlias() {
+				continue
+			}
+			for method := range named.Methods() {
+				if method.Exported() {
+					if f := prog.FuncValue(method); f != nil {
+						roots = append(roots, f)
+					}
+				}
+			}
+			if _, abstract := named.Underlying().(*types.Interface); abstract || !obj.Exported() || named.TypeParams().Len() > 0 {
+				continue
+			}
+			for _, t := range []types.Type{named, types.NewPointer(named)} {
+				methods := prog.MethodSets.MethodSet(t)
+				for i := range methods.Len() {
+					if sel := methods.At(i); sel.Obj().Exported() && len(sel.Index()) > 1 {
+						if f := prog.MethodValue(sel); f != nil {
+							roots = append(roots, f)
+						}
+					}
+				}
+			}
+		}
+	}
+	return roots
 }
 
 func within(root, path string) bool {
@@ -359,7 +412,7 @@ func (e *engine) state(id, scope string) *report.State {
 	return s
 }
 
-func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, scope, kind string, selected map[string]string) error {
+func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, scope, kind string, selected map[string]string, api bool) error {
 	t := time.Now()
 	prog, ssapkgs := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics)
 	e.log(scope + " " + kind + ": inventory")
@@ -373,6 +426,23 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 		if (kind == "production" && selected[p.Pkg.Path()] != "") || (kind == "tests" && test) {
 			for _, n := range []string{"main", "init"} {
 				if f := p.Func(n); f != nil {
+					roots = append(roots, f)
+					rootLabels[f] = functionID(f)
+				}
+			}
+		}
+	}
+	if api {
+		local := map[string]bool{}
+		for _, p := range pkgs {
+			local[p.PkgPath] = p.Module != nil && filepath.Clean(p.Module.Dir) == filepath.Clean(dir)
+		}
+		for _, p := range ssapkgs {
+			if p == nil || !local[p.Pkg.Path()] || !apiPackage(p.Pkg) {
+				continue
+			}
+			for _, f := range apiRoots(prog, p) {
+				if _, ok := rootLabels[f]; !ok {
 					roots = append(roots, f)
 					rootLabels[f] = functionID(f)
 				}

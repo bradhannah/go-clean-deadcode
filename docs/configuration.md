@@ -14,6 +14,15 @@ versions fail. See `examples/sample.json` and `schemas/config-v1.schema.json`.
 - `library`: explicitly permits no executable roots. It does **not** protect all
   exported symbols automatically; callers outside the project require contract
   review and narrow retention decisions.
+- `api_roots`: `"exported"` adds the module's public API to the production roots,
+  for libraries whose callers are other projects. In every non-`main` package
+  without an `internal` element in its import path, the roots are package
+  initialization, exported functions, exported methods declared on any type
+  (importers reach unexported types through returned values and interfaces), and
+  exported promoted methods of exported non-generic types. Unexported code and
+  internal packages are still findings unless that API or a selected executable
+  reaches them. Each scope records the mode. Test analysis is unchanged. A module
+  with API roots needs no executable.
 - `ignored_mains`: exact package/directory `path` and a nonempty `reason`.
 
 Narrow patterns deliberately limit the analyzed package universe; use `./...` for

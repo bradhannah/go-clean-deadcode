@@ -25,8 +25,13 @@ type Module struct {
 	EntryPoints  []EntryPoint `json:"entry_points"`
 	Tests        *bool        `json:"tests,omitempty"`
 	Library      bool         `json:"library,omitempty"`
+	APIRoots     string       `json:"api_roots,omitempty"`
 	IgnoredMains []Exclusion  `json:"ignored_mains,omitempty"`
 }
+
+// APIRootsExported treats every exported function and method outside internal
+// packages as callable by importers that this analysis cannot see.
+const APIRootsExported = "exported"
 
 type EntryPoint struct {
 	Package        string   `json:"package"`
@@ -125,6 +130,9 @@ func (c Config) Validate() error {
 			if x.Path == "" || strings.TrimSpace(x.Reason) == "" {
 				return fmt.Errorf("ignored mains require path and reason")
 			}
+		}
+		if m.APIRoots != "" && m.APIRoots != APIRootsExported {
+			return fmt.Errorf("module %s: api_roots must be %q when set", m.Path, APIRootsExported)
 		}
 	}
 	for _, x := range c.ExcludedModules {
