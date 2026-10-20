@@ -112,6 +112,10 @@ func (e *engine) finalize(c config.Config) {
 				break
 			}
 		}
+		if category != "" && e.symbols[id].Kind == "method" && e.compileRequired(id) {
+			category = ""
+			e.report.Notes = append(e.report.Notes, e.conformanceNote(id))
+		}
 		if category != "" {
 			if kept, note := e.keptDeclaration(id, e.significant, liveGroups, live, inProduction); kept {
 				category = ""

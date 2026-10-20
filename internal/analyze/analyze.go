@@ -52,9 +52,7 @@ type engine struct {
 	lookups map[lookupKey]map[report.ReflectiveLookup]bool
 	// lookupPackages holds the package of each standard-library lookup caller.
 	lookupPackages map[lookupKey]map[string]string
-	// conformance holds the interfaces whose conversions require each method.
-	conformance map[string][]string
-	conversions map[string]bool
+	conform        *conformanceEvidence
 }
 
 func Run(ctx context.Context, opt Options) (result *report.Report) {
@@ -70,8 +68,7 @@ func Run(ctx context.Context, opt Options) (result *report.Report) {
 	e.unexplained = map[lookupKey]map[string]bool{}
 	e.lookups = map[lookupKey]map[report.ReflectiveLookup]bool{}
 	e.lookupPackages = map[lookupKey]map[string]string{}
-	e.conformance = map[string][]string{}
-	e.conversions = map[string]bool{}
+	e.conform = newConformanceEvidence()
 	defer func() {
 		if p := recover(); p != nil {
 			e.report.Error("analysis_panic", "", fmt.Sprintf("analysis failed: %v", p))
@@ -561,6 +558,9 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 			path := p.Fset.Position(file.Pos()).Filename
 			return path, within(dir, path) && (p.Module == nil || filepath.Clean(p.Module.Dir) == filepath.Clean(dir))
 		}
+		if p.Module != nil && filepath.Clean(p.Module.Dir) == filepath.Clean(dir) {
+			e.recordInstances(lookupKey{scope, kind}, p)
+		}
 		// Inventory every package-level declaration before recording any use.
 		for _, file := range p.Syntax {
 			if path, ok := local(file); ok {
@@ -813,7 +813,8 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 	}
 	e.recordReflectiveLookup(scope, kind, res.CallGraph)
 	// Test files convert their fakes to interfaces too.
-	e.recordConformance(prog)
+	e.recordConversions(lookupKey{scope, kind}, prog, res)
+	e.resolveInstances(lookupKey{scope, kind})
 	e.log(scope + " " + kind + ": graph edges")
 	for _, node := range res.CallGraph.Nodes {
 		for _, edge := range node.Out {

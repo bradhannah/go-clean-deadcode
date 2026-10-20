@@ -20,3 +20,24 @@ type square struct{}
 func (square) Area() int { return 1 }
 
 func Count() int { return len([]Shape{square{}}) }
+
+// counter satisfies the Counted constraint, which requires Reset though no
+// code calls it.
+type Counted interface{ Reset() }
+
+type counter struct{ n int }
+
+func (c *counter) Reset() { c.n = 0 }
+
+type Tally[T Counted] struct{ items []T }
+
+func Tallies() int { return len(Tally[*counter]{}.items) }
+
+// Only dead code converts tag to Labeler, so Label goes with it.
+type Labeler interface{ Label() string }
+
+type tag struct{}
+
+func (tag) Label() string { return "tag" }
+
+func unusedLabel() Labeler { return tag{} }

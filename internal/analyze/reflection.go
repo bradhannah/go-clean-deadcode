@@ -1,7 +1,6 @@
 package analyze
 
 import (
-	"go/types"
 	"slices"
 	"sort"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"github.com/bradhannah/go-clean-deadcode/internal/report"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // Reachability keeps every exported method of a runtime type, because
@@ -129,50 +127,6 @@ func lookupEntries(via *callgraph.Node) []string {
 	return out
 }
 
-// recordConformance records, for every conversion of a concrete type to an
-// interface anywhere in the program, the methods that conversion requires. A
-// method required this way cannot be removed without changing the interface.
-func (e *engine) recordConformance(prog *ssa.Program) {
-	for fn := range ssautil.AllFunctions(prog) {
-		for _, block := range fn.Blocks {
-			for _, instr := range block.Instrs {
-				mi, ok := instr.(*ssa.MakeInterface)
-				if !ok {
-					continue
-				}
-				e.conformanceFor(mi.X.Type(), mi.Type())
-			}
-		}
-	}
-}
-
-func (e *engine) conformanceFor(concrete, target types.Type) {
-	iface, ok := target.Underlying().(*types.Interface)
-	if !ok || iface.NumMethods() == 0 {
-		return
-	}
-	key := concrete.String() + "\x00" + target.String()
-	if e.conversions[key] {
-		return
-	}
-	e.conversions[key] = true
-	set := types.NewMethodSet(concrete)
-	name := types.TypeString(target, func(p *types.Package) string { return p.Path() })
-	for i := range iface.NumMethods() {
-		m := iface.Method(i)
-		sel := set.Lookup(m.Pkg(), m.Name())
-		if sel == nil {
-			continue
-		}
-		if f, ok := sel.Obj().(*types.Func); ok {
-			id := objectID(f)
-			if !slices.Contains(e.conformance[id], name) {
-				e.conformance[id] = append(e.conformance[id], name)
-			}
-		}
-	}
-}
-
 // reflectionReviews matches reviews to the recorded lookups and returns the
 // analyses whose every lookup entry has a matched, current review.
 func (e *engine) reflectionReviews(c config.Config) map[lookupKey]bool {
@@ -249,7 +203,7 @@ func (e *engine) retainedByReflection(key lookupKey) map[string]bool {
 	unexplained := e.unexplained[key]
 	retained := map[string]bool{}
 	for id := range unexplained {
-		if x := e.symbols[id]; x != nil && (x.Kind == "function" || x.Kind == "method") && len(e.conformance[id]) == 0 {
+		if x := e.symbols[id]; x != nil && (x.Kind == "function" || x.Kind == "method") && !e.compileRequired(id) {
 			retained[id] = true
 		}
 	}
@@ -317,15 +271,10 @@ func (e *engine) applyReflectionReviews(c config.Config) []report.Note {
 			s.ReflectionReviewed = true
 			delete(e.decl.reachable[key.scope][key.analysis], id)
 		}
-		if key.analysis != "production" {
-			continue
-		}
+		// What a compile-time requirement keeps is reported instead of removed.
 		for id := range e.unexplained[key] {
-			if len(e.conformance[id]) > 0 && !retained[id] && e.symbols[id] != nil && !e.symbols[id].TestFile {
-				notes[id] = report.Note{Symbol: id, Kind: "interface_conformance", Message: "No call path reaches it, " +
-					"but converting its type to " + strings.Join(e.conformance[id], ", ") + " requires it. Nothing calls " +
-					"it through the interface either; removing it means removing that method from the interface, " +
-					"which needs a review of type switches and assertions on it."}
+			if x := e.symbols[id]; x != nil && !x.TestFile && key.analysis == "production" && e.compileRequired(id) {
+				notes[id] = e.conformanceNote(id)
 			}
 		}
 	}
@@ -359,7 +308,7 @@ func (e *engine) applyReflectionReviews(c config.Config) []report.Note {
 // reaches for a reason other than reflection.
 func (e *engine) productionReachableOtherwise(id string) bool {
 	for scope, s := range e.states[id] {
-		if s.Production == "reachable" && !e.unexplained[lookupKey{scope, "production"}][id] {
+		if s.Production == "reachable" && !e.unexplained[(lookupKey{scope, "production"})][id] {
 			return true
 		}
 	}

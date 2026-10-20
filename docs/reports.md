@@ -40,8 +40,9 @@ Structural validation is not semantic acceptance. A consumer should:
   `size_guard_field` is an unused field kept because it gives its struct a size,
   a `reflection_retained` function or method is kept only because reflection
   could call it and an entry into reflective method lookup is unreviewed, and
-  an `interface_conformance` method has no call path but an interface conversion
-  requires it.
+  an `interface_conformance` method has no call path but reachable code needs it
+  at compile time, by converting its type to an interface or instantiating a
+  generic with it.
 - `exceptions`: reasons, declared approval, review dates and match status.
 - `diagnostics`: scope/configuration/load errors and explicit exclusions.
 - `plan`: a simulated removal of every unresolved finding, in waves. Wave 1 is

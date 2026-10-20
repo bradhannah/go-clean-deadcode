@@ -45,10 +45,9 @@ call it, even when nothing in the program can. A complete forward search over
 the call graph from each analysis's roots finds what no call path reaches; a
 root without call edges is its own path, and a generic declaration is connected
 when any instantiation is. Of that code, a function or method is kept only by
-the reflection rule when no interface conversion anywhere in the program
-requires it (recorded from every `MakeInterface` instruction, test programs
-included) and nothing reachable outside that set refers to it; package-level
-references count as reachable.
+the reflection rule when no counted compile-time requirement needs it (test
+programs included) and nothing reachable outside that set refers to it;
+package-level references count as reachable.
 
 Only reflect's method lookups (`Method` and `MethodByName` on `reflect.Value` and
 `reflect.Type`) can call such code. Lookup callers are found through
@@ -60,9 +59,7 @@ package, which covers function values that static edges do not show. Without
 reviews, the kept code becomes `reflection_retained` notes. With every entry of
 an analysis reviewed, or no lookup at all, as the Go linker would conclude, the
 kept code is unreachable there and its states carry `reflection_reviewed`.
-Methods that a conversion requires become `interface_conformance` notes: their
-removal is a change to the interface, and type switches and assertions on it can
-change behaviour.
+Methods a compile-time requirement needs become `interface_conformance` notes.
 
 Source references are independently collected from type-resolved AST identifiers,
 including dead callers. A reference does not prove runtime reachability. Direct
@@ -86,9 +83,16 @@ a proven direct call. This avoids presenting unrelated test callbacks joined by
 RTA through `testing.tRunner` as the strongest explanation for a subtest body.
 
 Interface obligations include explicit variable declarations and assignments.
-The engine does not yet enumerate every return, argument conversion, embedding,
-or generic constraint requirement. Lack of an obligation record never establishes
-independent deletability. Recognized empty private interface marker methods remain
+Separately, every compile-time method requirement is recorded: each conversion of
+a concrete type to an interface (every `MakeInterface` instruction, so returns,
+arguments, literals and embedding promotion included) and each instantiation of
+a generic function or type, whose type arguments must have the constraint's
+methods. A requirement counts when reachable code makes it: a conversion in a
+reachable function, an instantiation in a reachable function, or one in a type
+or variable declaration. A method a counted requirement needs is never a
+removal finding; it becomes an `interface_conformance` note, since removing it
+means changing the interface or constraint. A requirement only dead code makes
+goes with that code. Recognized empty private interface marker methods remain
 in the symbol inventory and structural count without creating runtime findings.
 A method a runtime type needs to satisfy an interface that reachable code checks
 with a type assertion or type switch is required even when nothing calls it:

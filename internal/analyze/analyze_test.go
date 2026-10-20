@@ -422,6 +422,15 @@ func reflectionFixture(t *testing.T, reviews ...config.ReflectionReview) *report
 	return r
 }
 
+// reflectionFindings leaves out the fixture's ordinary dead code.
+func reflectionFindings(r *report.Report) map[string]string {
+	found := findingsOf(r)
+	for _, dead := range []string{"Labeler", "tag", "tag.Label", "unusedLabel"} {
+		delete(found, "example.com/reflection/shop."+dead)
+	}
+	return found
+}
+
 func reflectionReview(entry string) config.ReflectionReview {
 	return config.ReflectionReview{ID: "R-1", Entry: entry, Reason: "Only sees the plugin's own handler.",
 		ApprovedBy: "owner", ReviewAfter: time.Now().AddDate(0, 1, 0).Format("2006-01-02")}
@@ -433,8 +442,8 @@ func TestReflectiveLookupKeepsExportedMethodsUntilReviewed(t *testing.T) {
 	if lookups := r.Scopes[0].ReflectiveLookups; len(lookups) != 1 || lookups[0] != want {
 		t.Fatalf("lookups: %+v", lookups)
 	}
-	if len(findingsOf(r)) != 0 {
-		t.Errorf("unreviewed reflection must not create findings: %v", findingsOf(r))
+	if found := reflectionFindings(r); len(found) != 0 {
+		t.Errorf("unreviewed reflection must not create findings: %v", found)
 	}
 	notes := map[string]string{}
 	for _, n := range r.Notes {
@@ -457,23 +466,30 @@ func TestReviewedReflectionFindsCodeOnlyItKept(t *testing.T) {
 			t.Errorf("%s: got %q want %q", name, got, want)
 		}
 	}
-	for _, kept := range []string{"plugin.Start", "shop.square.Area", "shop.Print", "shop.Count", "shop.fakePricer.Price"} {
+	for _, kept := range []string{"plugin.Start", "shop.square.Area", "shop.Print", "shop.Count", "shop.fakePricer.Price", "shop.counter.Reset"} {
 		if got := found["example.com/reflection/"+kept]; got != "" {
 			t.Errorf("%s must not be a finding; got %q", kept, got)
 		}
 	}
-	conformance := false
+	conformance := map[string]bool{}
 	for _, n := range r.Notes {
-		conformance = conformance || n.Kind == "interface_conformance" && strings.HasSuffix(n.Symbol, "shop.square.Area")
+		if n.Kind == "interface_conformance" {
+			conformance[strings.TrimPrefix(n.Symbol, "example.com/reflection/")] = true
+		}
 	}
-	if !conformance {
-		t.Errorf("Area needs an interface_conformance note: %+v", r.Notes)
+	if !conformance["shop.square.Area"] || !conformance["shop.counter.Reset"] {
+		t.Errorf("Area and Reset need interface_conformance notes: %+v", r.Notes)
+	}
+	for _, dead := range []string{"shop.tag.Label", "shop.unusedLabel"} {
+		if got := found["example.com/reflection/"+dead]; got != "unreachable" {
+			t.Errorf("%s: a requirement only dead code makes must not keep it; got %q", dead, got)
+		}
 	}
 }
 
 func TestUnmatchedReflectionReviewIsStale(t *testing.T) {
 	r := reflectionFixture(t, reflectionReview("example.com/reflection/plugin.Missing"))
-	if r.ReflectionReviews[0].Status != "unmatched" || r.Summary.StaleExceptions != 1 || len(findingsOf(r)) != 0 {
-		t.Fatalf("review: %+v stale=%d findings=%v", r.ReflectionReviews, r.Summary.StaleExceptions, findingsOf(r))
+	if r.ReflectionReviews[0].Status != "unmatched" || r.Summary.StaleExceptions != 1 || len(reflectionFindings(r)) != 0 {
+		t.Fatalf("review: %+v stale=%d findings=%v", r.ReflectionReviews, r.Summary.StaleExceptions, reflectionFindings(r))
 	}
 }

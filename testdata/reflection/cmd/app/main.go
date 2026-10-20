@@ -9,4 +9,5 @@ func main() {
 	plugin.Start()
 	_ = shop.Print()
 	_ = shop.Count()
+	_ = shop.Tallies()
 }
