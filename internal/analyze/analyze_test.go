@@ -371,6 +371,7 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 		// keeps exported methods of runtime types does not keep these.
 		"lib.Receipt.Total": "unreachable", "lib.double": "unreachable",
 		"lib.Preset": "test_only", "lib.PresetMorning": "test_only", "lib.PresetNoon": "test_only",
+		"lib.settingUnused": "unused_test_helper",
 	} {
 		if got := found[name]; got != want {
 			t.Errorf("%s: got %q want %q", name, got, want)

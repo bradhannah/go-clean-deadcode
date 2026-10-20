@@ -48,3 +48,15 @@ func TestPreset(t *testing.T) {
 		t.Fatal("presets collide")
 	}
 }
+
+// The test settings block keeps only what tests use.
+const (
+	settingUsed   = 1
+	settingUnused = 2
+)
+
+func TestSetting(t *testing.T) {
+	if settingUsed != 1 {
+		t.Fatal("setting")
+	}
+}
