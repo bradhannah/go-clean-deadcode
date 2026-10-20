@@ -200,6 +200,15 @@
             "null"
           ]
         },
+        "test_support": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "tests": {
           "anyOf": [
             {

@@ -71,13 +71,14 @@ func (e *engine) finalize(c config.Config) {
 		s.Obligations = unique(s.Obligations)
 		e.report.Symbols = append(e.report.Symbols, *s)
 		category := ""
+		testHelper := s.TestFile || s.TestSupport
 		if !prodLive {
 			switch {
-			case s.TestFile && testSeen && !testLive:
+			case testHelper && testSeen && !testLive:
 				category = "unused_test_helper"
-			case !s.TestFile && prodSeen && testLive:
+			case !testHelper && prodSeen && testLive:
 				category = "test_only"
-			case !s.TestFile && (prodSeen || testSeen) && !testLive:
+			case !testHelper && (prodSeen || testSeen) && !testLive:
 				category = "unreachable"
 			}
 		}
@@ -85,6 +86,11 @@ func (e *engine) finalize(c config.Config) {
 			if o.Kind == "marker_method" && category == "unreachable" {
 				category = ""
 				e.report.Summary.StructuralMethods++
+				break
+			}
+			if o.Kind == "assertion_satisfaction" && category != "" {
+				category = ""
+				e.report.Summary.RequiredMethods++
 				break
 			}
 		}

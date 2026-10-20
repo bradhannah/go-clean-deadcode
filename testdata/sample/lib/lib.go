@@ -43,3 +43,30 @@ type Hidden struct{}
 func (Hidden) seal() {}
 
 var _ sealed = Hidden{}
+
+// finisher is checked dynamically; RunJob only calls finish, yet a runtime type
+// needs label too, or the assertion silently fails. Unexported methods are the
+// case reachability alone misses.
+type finisher interface {
+	finish(step int)
+	label() string
+}
+
+type job struct{}
+
+func (job) finish(int)    {}
+func (job) label() string { return "job" }
+
+// idleJob satisfies finisher but never reaches the assertion.
+type idleJob struct{}
+
+func (idleJob) finish(int)    {}
+func (idleJob) label() string { return "idle" }
+
+func NewJob() any { return job{} }
+
+func RunJob(x any) {
+	if f, ok := x.(finisher); ok {
+		f.finish(1)
+	}
+}

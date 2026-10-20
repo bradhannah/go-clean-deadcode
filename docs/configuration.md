@@ -14,6 +14,14 @@ versions fail. See `examples/sample.json` and `schemas/config-v1.schema.json`.
 - `library`: explicitly permits no executable roots. It does **not** protect all
   exported symbols automatically; callers outside the project require contract
   review and narrow retention decisions.
+- `test_support`: module-relative entries naming shared test support kept in
+  normal files, because Go cannot import `_test.go` files across packages. An
+  entry ending in `.go` names a file, one ending in `/...` a directory tree, and
+  any other entry one package directory, for example `./test/...` or
+  `./internal/state/fake_callbacks.go`. Declarations there are classified like
+  test-file declarations: no finding while tests use them, `unused_test_helper`
+  when they do not. Production code in such a file loses its `test_only`
+  classification, so keep support in its own files.
 - `api_roots`: `"exported"` adds the module's public API to the production roots,
   for libraries whose callers are other projects. In every non-`main` package
   without an `internal` element in its import path, the roots are package

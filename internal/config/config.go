@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -26,6 +27,7 @@ type Module struct {
 	Tests        *bool        `json:"tests,omitempty"`
 	Library      bool         `json:"library,omitempty"`
 	APIRoots     string       `json:"api_roots,omitempty"`
+	TestSupport  []string     `json:"test_support,omitempty"`
 	IgnoredMains []Exclusion  `json:"ignored_mains,omitempty"`
 }
 
@@ -131,6 +133,11 @@ func (c Config) Validate() error {
 				return fmt.Errorf("ignored mains require path and reason")
 			}
 		}
+		for _, entry := range m.TestSupport {
+			if !strings.HasPrefix(entry, "./") || slices.Contains(strings.Split(entry, "/"), "..") {
+				return fmt.Errorf("module %s: test_support entries must be ./ module-relative: %q", m.Path, entry)
+			}
+		}
 		if m.APIRoots != "" && m.APIRoots != APIRootsExported {
 			return fmt.Errorf("module %s: api_roots must be %q when set", m.Path, APIRootsExported)
 		}
@@ -157,6 +164,30 @@ func relative(p string) bool {
 	return p != "" && !filepath.IsAbs(p) && filepath.Clean(p) != ".." && !strings.HasPrefix(filepath.Clean(p), ".."+string(filepath.Separator))
 }
 func (m Module) IncludeTests() bool { return m.Tests == nil || *m.Tests }
+
+// IsTestSupport reports whether a module-relative file belongs to declared test
+// support: an entry ending in .go names a file, one ending in /... a directory
+// tree, and any other entry one package directory.
+func (m Module) IsTestSupport(file string) bool {
+	dir := "./" + filepath.ToSlash(filepath.Dir(file))
+	file = "./" + filepath.ToSlash(file)
+	for _, entry := range m.TestSupport {
+		switch {
+		case strings.HasSuffix(entry, ".go"):
+			if file == entry {
+				return true
+			}
+		case strings.HasSuffix(entry, "/..."):
+			base := strings.TrimSuffix(entry, "/...")
+			if dir == base || strings.HasPrefix(dir, base+"/") {
+				return true
+			}
+		case dir == strings.TrimSuffix(entry, "/"):
+			return true
+		}
+	}
+	return false
+}
 func (e EntryPoint) Enabled(name string) bool {
 	if len(e.Configurations) == 0 {
 		return true

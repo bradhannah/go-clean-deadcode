@@ -36,6 +36,7 @@ type Scope struct {
 	Packages      int          `json:"packages"`
 	EntryPoints   []EntryPoint `json:"entry_points"`
 	APIRoots      string       `json:"api_roots,omitempty"`
+	TestSupport   []string     `json:"test_support,omitempty"`
 	Tests         bool         `json:"tests"`
 	NestedModules []string     `json:"nested_modules"`
 }
@@ -60,6 +61,7 @@ type Symbol struct {
 	Receiver       string       `json:"receiver,omitempty"`
 	Kind           string       `json:"kind"`
 	TestFile       bool         `json:"test_file"`
+	TestSupport    bool         `json:"test_support,omitempty"`
 	Generated      bool         `json:"generated"`
 	Fingerprint    string       `json:"fingerprint"`
 	RegisteredTest bool         `json:"registered_test"`
@@ -151,6 +153,7 @@ type Summary struct {
 	Accepted          int `json:"accepted"`
 	StaleExceptions   int `json:"stale_exceptions"`
 	StructuralMethods int `json:"structural_methods"`
+	RequiredMethods   int `json:"required_methods"`
 }
 
 type Metrics struct {
