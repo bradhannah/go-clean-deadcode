@@ -51,10 +51,12 @@ Structural validation is not semantic acceptance. A consumer should:
   `exposed`: code that only removed code reached. Each wave counts functions,
   declarations (types, fields, constants and variables), test helpers, tests and
   declaration lines, and lists `tests_needing_edits`:
-  surviving tests that directly reference a removal. A removal records the tests
-  that reference it (`referenced_by`, at most 20) and `other_packages` when a
-  referencing test is in another package, which usually means shared test
-  support. The plan edits nothing and assumes every finding is removed, except
+  surviving test-side code that directly references a removal. Test-side code is
+  registered tests and declarations in test files or test support, so helpers
+  count; only registered tests are removed as `dedicated_test`, since surviving
+  tests may call a helper. A removal records the test-side code that references
+  it (`referenced_by`, at most 20) and `other_packages` when any of it is in
+  another package, which usually means shared test support. The plan edits nothing and assumes every finding is removed, except
   `never_assigned` fields, which it leaves for review.
 - `metrics`: this invocation's measured phase/total times and cache-hit status.
 - `limitations`: precision boundaries that consumers must preserve.

@@ -180,3 +180,6 @@ const (
 	PresetMorning Preset = iota
 	PresetNoon
 )
+
+// Retired is reached only by a helper in another package's tests.
+func Retired() {}

@@ -15,8 +15,8 @@ type planGraph struct {
 	prodLive   map[string]bool
 	testLive   map[string]bool
 	testEdges  map[string][]string
-	references map[string]map[string]bool // test -> declarations it references directly
-	referrers  map[string][]string        // declaration -> tests that reference it directly
+	references map[string]map[string]bool // test-side code -> declarations it references directly
+	referrers  map[string][]string        // declaration -> test-side code that references it directly
 }
 
 func newPlanGraph(r *report.Report) *planGraph {
@@ -35,9 +35,11 @@ func newPlanGraph(r *report.Report) *planGraph {
 			g.testEdges[edge.Caller] = append(g.testEdges[edge.Caller], edge.Callee)
 		}
 	}
+	// Test-side code is a registered test or a declaration in a test file or test
+	// support: a helper's reference matters as much as a test's.
 	for _, ref := range r.References {
 		from := g.symbols[ref.From]
-		if from == nil || !from.RegisteredTest || g.symbols[ref.Symbol] == nil {
+		if from == nil || !(from.RegisteredTest || from.TestFile || from.TestSupport) || g.symbols[ref.Symbol] == nil {
 			continue
 		}
 		if g.references[ref.From] == nil {
@@ -70,9 +72,13 @@ func (g *planGraph) required(id string) bool {
 	return false
 }
 
-// dedicated reports whether a surviving test references production code only
-// where that code is removed, so the test exists for removed code alone.
+// dedicated reports whether a surviving registered test references production
+// code only where that code is removed, so the test exists for removed code
+// alone. Helpers are not removed this way: surviving tests may call them.
 func (g *planGraph) dedicated(test string, removed map[string]int) bool {
+	if !g.symbols[test].RegisteredTest {
+		return false
+	}
 	production := 0
 	for id := range g.references[test] {
 		if g.testHelper(id) {

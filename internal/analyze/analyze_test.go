@@ -346,6 +346,11 @@ func TestRemovalPlanFollowsTheCascade(t *testing.T) {
 	if !slices.Contains(r.Plan.Waves[0].TestsNeedingEdits, "example.com/sample/lib.TestMixed") {
 		t.Errorf("TestMixed references removed code and survives: %v", r.Plan.Waves[0].TestsNeedingEdits)
 	}
+	retired := planned["lib.Retired"]
+	if !retired.OtherPackages || !slices.Contains(retired.ReferencedBy, "example.com/sample/consumer.checkRetired") ||
+		!slices.Contains(r.Plan.Waves[0].TestsNeedingEdits, "example.com/sample/consumer.checkRetired") {
+		t.Errorf("a helper in another package must count as a referrer: %+v", retired)
+	}
 	if planned["lib.Obsolete"].Lines < 1 || r.Plan.Lines < r.Plan.Waves[0].Lines {
 		t.Errorf("line counts missing: %+v", r.Plan)
 	}
