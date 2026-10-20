@@ -116,6 +116,25 @@ type settings struct {
 	tagged   int `layout:"t"`
 }
 
+// box is generic: its methods use instantiated fields, which are the declared ones.
+type box[T any] struct {
+	value T
+	spare int
+}
+
+func (b *box[T]) Get() T { return b.value }
+
+func Boxed() int { b := &box[int]{value: 1}; return b.Get() }
+
+// digest is written only through a slice of the array, which still assigns it.
+type digest struct{ sum [4]byte }
+
+func Digest() byte {
+	var d digest
+	copy(d.sum[:], "abcd")
+	return d.sum[0]
+}
+
 func Settings() string {
 	s := settings{name: "x"}
 	if s.enabled {

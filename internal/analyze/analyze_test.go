@@ -359,7 +359,7 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 	found := findingsOf(r)
 	for name, want := range map[string]string{
 		"lib.deadConfig": "unreachable", "lib.deadLimit": "unreachable", "lib.deadTable": "unreachable",
-		"lib.settings.unused": "unreachable", "lib.settings.enabled": "never_assigned",
+		"lib.settings.unused": "unreachable", "lib.settings.enabled": "never_assigned", "lib.box.spare": "unreachable",
 		"lib.testOnlyKind": "test_only", "lib.unusedFixture": "unused_test_helper",
 	} {
 		if got := found[name]; got != want {
@@ -367,7 +367,7 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 		}
 	}
 	for _, kept := range []string{"lib.Shape", "lib.Circle", "lib.Square", "lib.settings", "lib.settings.name",
-		"lib.settings.Exported", "lib.settings.tagged", "lib.header.spare", "lib.header.magic", "lib.registry",
+		"lib.settings.Exported", "lib.settings.tagged", "lib.header.spare", "lib.header.magic", "lib.registry", "lib.digest.sum", "lib.box.value",
 		"lib.deadConfig.size", "lib.finisher"} {
 		if got := found[kept]; got != "" {
 			t.Errorf("%s must not be a finding; got %q", kept, got)

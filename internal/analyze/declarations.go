@@ -28,7 +28,7 @@ type declaration struct {
 	tagged    bool
 	embedded  bool
 	effects   bool   // a variable whose initializer calls something
-	enumGroup string // a constant group that uses iota
+	enumGroup string // a grouped constant block: a value set such as an enum
 	enumType  string // the named type of a typed constant
 }
 
@@ -129,7 +129,7 @@ func containsLocation(locations []report.Location, loc report.Location) bool {
 func (e *engine) declare(p *packages.Package, file *ast.File, g *ast.GenDecl, path, scope, analysis string,
 	module config.Module, dir string, api bool) {
 	group := ""
-	if g.Tok == token.CONST && usesIota(p, g) {
+	if g.Tok == token.CONST && g.Lparen.IsValid() && constNames(g) > 1 {
 		loc := e.location(p.Fset, g.Pos())
 		group = fmt.Sprintf("%s#%d", loc.File, loc.Line)
 	}
@@ -267,17 +267,16 @@ func (e *engine) markRoot(api bool, scope, id string, exported bool) {
 	e.decl.roots[scope][id] = true
 }
 
-func usesIota(p *packages.Package, g *ast.GenDecl) bool {
-	found := false
-	ast.Inspect(g, func(n ast.Node) bool {
-		if id, ok := n.(*ast.Ident); ok && id.Name == "iota" {
-			if obj := p.TypesInfo.Uses[id]; obj != nil && obj.Parent() == types.Universe {
-				found = true
-			}
+// constNames counts the names a constant block declares. A block of several
+// constants is treated as one value set, like an enum or a catalog of indexes.
+func constNames(g *ast.GenDecl) int {
+	names := 0
+	for _, spec := range g.Specs {
+		if v, ok := spec.(*ast.ValueSpec); ok {
+			names += len(v.Names)
 		}
-		return !found
-	})
-	return found
+	}
+	return names
 }
 
 // callsSomething reports an initializer with possible side effects: any call
@@ -303,7 +302,8 @@ func (e *engine) declarationTarget(p *packages.Package, id *ast.Ident) string {
 	switch obj := p.TypesInfo.Uses[id].(type) {
 	case *types.Var:
 		if obj.IsField() {
-			return e.decl.fields[obj]
+			// A generic type's methods use the instantiated field; Origin is the declared one.
+			return e.decl.fields[obj.Origin()]
 		}
 		if obj.Pkg() != nil && obj.Parent() == obj.Pkg().Scope() {
 			return packageObjectID(obj)
@@ -360,7 +360,8 @@ func (e *engine) recordUses(p *packages.Package, node ast.Node, from string) {
 
 // fieldWritten reports whether the field identifier on top of stack is a write
 // target: an assignment or increment target (directly or through indexing or a
-// nested field), a composite literal key, an address, or the receiver of a
+// nested field), a composite literal key, an address, a slice of it (which
+// aliases an array field's memory, as in copy(x.f[:], src)), or the receiver of a
 // pointer-receiver method call.
 func fieldWritten(p *packages.Package, stack []ast.Node) bool {
 	node := stack[len(stack)-1]
@@ -381,6 +382,8 @@ func fieldWritten(p *packages.Package, stack []ast.Node) bool {
 			if parent.X != node {
 				return false
 			}
+		case *ast.SliceExpr:
+			return parent.X == node
 		case *ast.IndexListExpr, *ast.StarExpr, *ast.ParenExpr:
 		case *ast.AssignStmt:
 			for _, lhs := range parent.Lhs {
@@ -574,7 +577,7 @@ func (e *engine) declarationStates() map[string]bool {
 	return significant
 }
 
-// liveEnumGroups lists iota constant groups with at least one live member.
+// liveEnumGroups lists constant blocks with at least one live member.
 func (e *engine) liveEnumGroups(live func(string) bool) map[string]bool {
 	groups := map[string]bool{}
 	for id, d := range e.decl.decls {
@@ -601,7 +604,7 @@ func (e *engine) keptDeclaration(id string, significant, liveGroups map[string]b
 	case d.kind == "const" && d.enumType != "" && live(d.enumType):
 		return true, "Unused value of the enum " + d.enumType + ", which is in use; review it, but it is not removed by default."
 	case d.kind == "const" && liveGroups[d.enumGroup]:
-		return true, "Unused value of an iota constant group that is in use; review it, but it is not removed by default."
+		return true, "Unused value of a constant block that is in use; review it, but it is not removed by default."
 	}
 	return false, ""
 }

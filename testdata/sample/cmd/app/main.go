@@ -10,4 +10,6 @@ func main() {
 	lib.ShapeName()
 	lib.Settings()
 	lib.HeaderSize()
+	lib.Digest()
+	lib.Boxed()
 }
