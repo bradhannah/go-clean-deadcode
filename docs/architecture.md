@@ -130,7 +130,9 @@ a layout-significant struct. A struct is layout-significant when it reaches
 type, or is built with an unkeyed composite literal; a struct field type of a
 significant struct is significant too. Fields of a dead type are removed with it
 and not reported separately. Variables whose initializer calls a function are
-kept for its effects, and blank `_` declarations are not inventoried.
+kept for its effects. Blank `_` declarations are not inventoried and do not keep
+what they name live: a `var _ I = (*T)(nil)` assertion on an otherwise unused
+interface is removed together with the interface.
 
 A constant block of two or more names, or a constant of a named type, is a value
 set. An unused value of a set that is otherwise in use becomes a note: values can
