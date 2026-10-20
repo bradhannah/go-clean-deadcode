@@ -36,7 +36,7 @@ Structural validation is not semantic acceptance. A consumer should:
   accepted disposition, and any matching exception ID. A `never_assigned`
   finding lists the live `reads` of its field.
 - `notes`: review information that is never a finding: an `unused_enum_value`
-  is an unused value of a constant set otherwise in use, and a
+  is an unused value of a constant set production otherwise uses, and a
   `size_guard_field` is an unused field kept because it gives its struct a size,
   a `reflection_retained` function or method is kept only because reflection
   could call it and an entry into reflective method lookup is unreviewed, and

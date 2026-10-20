@@ -172,3 +172,11 @@ func (r Receipt) Total() int { return double(r.amount) }
 func double(n int) int { return n * 2 }
 
 func PrintReceipt() string { return fmt.Sprint(Receipt{amount: 1}) }
+
+// Preset is an enum only tests use, so its values go with it.
+type Preset int
+
+const (
+	PresetMorning Preset = iota
+	PresetNoon
+)

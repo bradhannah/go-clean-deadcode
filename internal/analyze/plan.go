@@ -191,13 +191,14 @@ func (e *engine) exposedDeclarations(g *planGraph, reached map[string]bool, remo
 	}
 	live := e.liveDeclarations(seeds, removed, e.significant)
 	wasLive := func(id string) bool { return g.prodLive[id] || g.testLive[id] }
-	liveGroups := e.liveEnumGroups(func(id string) bool { return live[id] })
+	inProduction := func(id string) bool { _, gone := removed[id]; return live[id] && g.prodLive[id] && !gone }
+	liveGroups := e.liveEnumGroups(inProduction)
 	var exposed []string
 	for id := range e.decl.decls {
 		if _, gone := removed[id]; gone || live[id] || !wasLive(id) {
 			continue
 		}
-		if kept, _ := e.keptDeclaration(id, e.significant, liveGroups, func(id string) bool { return live[id] }); !kept {
+		if kept, _ := e.keptDeclaration(id, e.significant, liveGroups, func(id string) bool { return live[id] }, inProduction); !kept {
 			exposed = append(exposed, id)
 		}
 	}

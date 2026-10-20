@@ -165,9 +165,10 @@ what they name live: a `var _ I = (*T)(nil)` assertion on an otherwise unused
 interface is removed together with the interface.
 
 A constant block of two or more names, or a constant of a named type, is a value
-set. An unused value of a set that is otherwise in use becomes a note: values can
-be reserved for future use or mirror an external format. A set with no live value
-is reported in full.
+set. An unused value of a set that production otherwise uses becomes a note:
+values can be reserved for future use or mirror an external format. A set with
+no value live in production is classified in full, so an enum only tests use is
+`test_only` together with its type.
 
 `never_assigned` reports an eligible field of a live struct that reachable code
 reads and nothing, live or dead, writes. Its reads always see the zero value, so

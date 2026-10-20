@@ -55,7 +55,15 @@ func (e *engine) finalize(c config.Config) {
 		}
 	}
 	live := func(id string) bool { return liveAny[id] }
-	liveGroups := e.liveEnumGroups(live)
+	inProduction := func(id string) bool {
+		for _, st := range e.states[id] {
+			if st.Production == "reachable" {
+				return true
+			}
+		}
+		return false
+	}
+	liveGroups := e.liveEnumGroups(inProduction)
 	for id, s := range e.symbols {
 		bodies := make([]string, 0, len(e.bodies[id]))
 		for b := range e.bodies[id] {
@@ -105,7 +113,7 @@ func (e *engine) finalize(c config.Config) {
 			}
 		}
 		if category != "" {
-			if kept, note := e.keptDeclaration(id, e.significant, liveGroups, live); kept {
+			if kept, note := e.keptDeclaration(id, e.significant, liveGroups, live, inProduction); kept {
 				category = ""
 				if note != "" {
 					e.report.Notes = append(e.report.Notes, report.Note{Symbol: id, Kind: "unused_enum_value", Message: note})

@@ -642,8 +642,9 @@ func (e *engine) liveEnumGroups(live func(string) bool) map[string]bool {
 }
 
 // keptDeclaration reports a declaration that is never a removal finding, with
-// the note to record instead, if any.
-func (e *engine) keptDeclaration(id string, significant, liveGroups map[string]bool, live func(string) bool) (bool, string) {
+// the note to record instead, if any. An unused enum value is kept only while
+// production uses its enum: an enum only tests use goes with its type.
+func (e *engine) keptDeclaration(id string, significant, liveGroups map[string]bool, live, inProduction func(string) bool) (bool, string) {
 	d := e.decl.decls[id]
 	switch {
 	case d == nil:
@@ -654,7 +655,7 @@ func (e *engine) keptDeclaration(id string, significant, liveGroups map[string]b
 		return true, ""
 	case d.kind == "var" && d.effects:
 		return true, ""
-	case d.kind == "const" && d.enumType != "" && live(d.enumType):
+	case d.kind == "const" && d.enumType != "" && inProduction(d.enumType):
 		return true, "Unused value of the enum " + d.enumType + ", which is in use; review it, but it is not removed by default."
 	case d.kind == "const" && liveGroups[d.enumGroup]:
 		return true, "Unused value of a constant block that is in use; review it, but it is not removed by default."

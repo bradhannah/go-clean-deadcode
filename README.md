@@ -68,7 +68,7 @@ field of a struct whose layout matters (used with `encoding/binary`, `reflect` o
 fields that are all that keep a struct from being zero-sized (pointer identity
 depends on it),
 and variables whose initializer calls something. An unused value of a constant
-block or typed enum that is otherwise in use is reported as a note for review,
+block or typed enum that production otherwise uses is reported as a note for review,
 not a finding.
 
 Reachability keeps exported methods of runtime types because reflection could

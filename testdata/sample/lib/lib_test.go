@@ -42,3 +42,9 @@ type unusedFixture struct{}
 type setupState struct{ calls int }
 
 func TestTestOnlyKind(t *testing.T) { _ = testOnlyKind{}; Live(); t.Helper() }
+
+func TestPreset(t *testing.T) {
+	if PresetMorning == PresetNoon {
+		t.Fatal("presets collide")
+	}
+}
