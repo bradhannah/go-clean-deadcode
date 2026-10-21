@@ -39,6 +39,15 @@
             "null"
           ]
         },
+        "reflection_reviews": {
+          "items": {
+            "$ref": "#/$defs/ReflectionReview"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "schema_version": {
           "const": 1
         }
@@ -224,6 +233,34 @@
         "path",
         "patterns",
         "entry_points"
+      ],
+      "type": "object"
+    },
+    "ReflectionReview": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_by": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "review_after": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "entry",
+        "reason",
+        "approved_by",
+        "review_after"
       ],
       "type": "object"
     }

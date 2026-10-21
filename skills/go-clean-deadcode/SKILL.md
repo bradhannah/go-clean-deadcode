@@ -69,6 +69,12 @@ For each coherent candidate group:
   this repository does not establish no downstream consumers.
 - Treat marker methods as compile-time structure. Other uncalled methods may also
   be required by interfaces, even without an explicit obligation record.
+- For `reflection_retained` notes, read each scope's `reflective_lookups` (method
+  lookups, and field access for notes on fields). Read every entry's source to
+  see what it passes to reflection, and propose a
+  reflection review to the owner only when no module value can reach it. Never
+  record the approval yourself. `interface_conformance` notes need a decision on
+  the interface, not a method removal.
 
 [Reviewing tests](references/reviewing-tests.md) covers the subtle cases.
 
@@ -94,6 +100,11 @@ before. Then build every configuration, run the repository's linter and
 formatter to clear whitespace and import artifacts, and compare test coverage
 with the pre-change commit: a live function that lost coverage means a test of
 live behaviour was weakened.
+
+For a `never_assigned` field, read each listed read: the branch it guards can
+never run, so remove the field together with that branch, or add the missing
+assignment if the behaviour is wanted (ask when intent is unclear). Report
+`notes` such as unused enum values for review; do not remove them unprompted.
 
 Repeat analysis after changes, including after removing a test/root. Stop and
 report blocked decisions when there is no progress or scope is incomplete. Do not

@@ -40,6 +40,29 @@ type engine struct {
 	refs     map[report.Reference]bool
 	progress func(string)
 	bodies   map[string]map[string]bool
+	decl     *declarationEvidence
+	// significant holds struct types whose field layout must not change, and
+	// layoutOnly those of them that no reflection review could release.
+	significant map[string]bool
+	layoutOnly  map[string]bool
+	// sizeGuarded holds struct types whose only sized fields are removable.
+	sizeGuarded map[string]bool
+	// unexplained holds, per scope and analysis, reachable symbols that no call
+	// path from an entry point reaches.
+	unexplained map[lookupKey]map[string]bool
+	// lookups holds, per scope and analysis, reachable reflective method lookups.
+	lookups map[lookupKey]map[report.ReflectiveLookup]bool
+	// lookupPackages holds the package of each standard-library lookup caller.
+	lookupPackages map[lookupKey]map[string]string
+	// fieldEntries holds, per scope, the unreviewed entries into reflective
+	// field access in production.
+	fieldEntries map[string][]string
+	// runtimeStructs holds, per scope, struct types production can reflect on.
+	runtimeStructs map[string]map[string]bool
+	// reflected holds the struct types unreviewed field access can see, with
+	// its entries.
+	reflected map[string][]string
+	conform   *conformanceEvidence
 }
 
 func Run(ctx context.Context, opt Options) (result *report.Report) {
@@ -51,6 +74,12 @@ func Run(ctx context.Context, opt Options) (result *report.Report) {
 	e := &engine{root: opt.Root, report: report.New(mode), symbols: map[string]*report.Symbol{}, states: map[string]map[string]*report.State{}, edges: map[report.Edge]bool{}, refs: map[report.Reference]bool{}}
 	e.progress = opt.Progress
 	e.bodies = map[string]map[string]bool{}
+	e.decl = newDeclarationEvidence()
+	e.unexplained = map[lookupKey]map[string]bool{}
+	e.lookups = map[lookupKey]map[report.ReflectiveLookup]bool{}
+	e.lookupPackages = map[lookupKey]map[string]string{}
+	e.runtimeStructs = map[string]map[string]bool{}
+	e.conform = newConformanceEvidence()
 	defer func() {
 		if p := recover(); p != nil {
 			e.report.Error("analysis_panic", "", fmt.Sprintf("analysis failed: %v", p))
@@ -182,7 +211,7 @@ func (e *engine) load(ctx context.Context, m config.Module, v config.Configurati
 
 func (e *engine) scope(ctx context.Context, m config.Module, v config.Configuration, nested []string, discover bool) {
 	id := filepath.ToSlash(m.Path) + "@" + v.Name
-	s := report.Scope{ID: id, Module: m.Path, Configuration: v.Name, GOOS: v.GOOS, GOARCH: v.GOARCH, Tags: append([]string{}, v.Tags...), CGOEnabled: v.CGOEnabled, Tests: m.IncludeTests(), EntryPoints: []report.EntryPoint{}, APIRoots: m.APIRoots, TestSupport: append([]string{}, m.TestSupport...), NestedModules: append([]string{}, nested...)}
+	s := report.Scope{ID: id, Module: m.Path, Configuration: v.Name, GOOS: v.GOOS, GOARCH: v.GOARCH, Tags: append([]string{}, v.Tags...), CGOEnabled: v.CGOEnabled, Tests: m.IncludeTests(), EntryPoints: []report.EntryPoint{}, ReflectiveLookups: []report.ReflectiveLookup{}, APIRoots: m.APIRoots, TestSupport: append([]string{}, m.TestSupport...), NestedModules: append([]string{}, nested...)}
 	s.Patterns = append([]string{}, m.Patterns...)
 	defer func() {
 		for _, d := range e.report.Diagnostics {
@@ -362,7 +391,8 @@ func (e *engine) owner(index *graphIndex, fn *ssa.Function) string {
 // interface that reachable code checks with a type assertion or type switch.
 // Removing such a method still compiles but silently changes which branch runs.
 func (e *engine) assertionObligations(prog *ssa.Program, res *rta.Result, scope string) {
-	asserted := map[*types.Interface]string{}
+	// One interface can be asserted under several names, such as an alias.
+	asserted := map[*types.Interface]map[string]bool{}
 	for fn := range res.Reachable {
 		for _, block := range fn.Blocks {
 			for _, instruction := range block.Instrs {
@@ -371,7 +401,10 @@ func (e *engine) assertionObligations(prog *ssa.Program, res *rta.Result, scope 
 					continue
 				}
 				if iface, ok := assertion.AssertedType.Underlying().(*types.Interface); ok && iface.NumMethods() > 0 {
-					asserted[iface] = types.TypeString(assertion.AssertedType, nil)
+					if asserted[iface] == nil {
+						asserted[iface] = map[string]bool{}
+					}
+					asserted[iface][types.TypeString(assertion.AssertedType, nil)] = true
 				}
 			}
 		}
@@ -379,10 +412,16 @@ func (e *engine) assertionObligations(prog *ssa.Program, res *rta.Result, scope 
 	recorded := map[string]bool{}
 	res.RuntimeTypes.Iterate(func(runtime types.Type, _ any) {
 		methods := prog.MethodSets.MethodSet(runtime)
-		for iface, name := range asserted {
+		for iface, names := range asserted {
 			if !types.Implements(runtime, iface) {
 				continue
 			}
+			sorted := make([]string, 0, len(names))
+			for n := range names {
+				sorted = append(sorted, n)
+			}
+			sort.Strings(sorted)
+			name := strings.Join(sorted, " or ")
 			for method := range iface.Methods() {
 				selection := methods.Lookup(method.Pkg(), method.Name())
 				if selection == nil {
@@ -536,13 +575,34 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 				}
 			}
 		}
-		for _, file := range p.Syntax {
+		local := func(file *ast.File) (string, bool) {
 			path := p.Fset.Position(file.Pos()).Filename
-			if !within(dir, path) || (p.Module != nil && filepath.Clean(p.Module.Dir) != filepath.Clean(dir)) {
+			return path, within(dir, path) && (p.Module == nil || filepath.Clean(p.Module.Dir) == filepath.Clean(dir))
+		}
+		if p.Module != nil && filepath.Clean(p.Module.Dir) == filepath.Clean(dir) {
+			e.recordInstances(lookupKey{scope, kind}, p)
+		}
+		// Inventory every package-level declaration before recording any use.
+		for _, file := range p.Syntax {
+			if path, ok := local(file); ok {
+				for _, decl := range file.Decls {
+					if g, ok := decl.(*ast.GenDecl); ok {
+						e.declare(p, file, g, path, scope, kind, module, dir, api && apiPackage(p.Types))
+					}
+				}
+			}
+		}
+		for _, file := range p.Syntax {
+			path, ok := local(file)
+			if !ok {
 				continue
 			}
 			initOrdinal := 0
 			for _, decl := range file.Decls {
+				if g, ok := decl.(*ast.GenDecl); ok {
+					e.declarationUses(p, g)
+					continue
+				}
 				d, ok := decl.(*ast.FuncDecl)
 				if !ok {
 					continue
@@ -561,6 +621,7 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 					initOrdinal++
 					id += "@" + e.location(p.Fset, d.Pos()).File + fmt.Sprintf("#%d", initOrdinal)
 				}
+				e.recordUses(p, d, id)
 				fn := prog.FuncValue(obj)
 				if fn == nil {
 					continue
@@ -696,6 +757,7 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 			continue
 		}
 		targets[fn] = true
+		e.reachableFunction(scope, kind, id)
 		s := e.state(id, scope)
 		if kind == "production" {
 			s.Production = "reachable"
@@ -706,6 +768,29 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 	productionPaths := map[*ssa.Function]report.Witness{}
 	if kind == "production" {
 		productionPaths = forwardWitnesses(index, rootLabels, kind, targets)
+	}
+	// A complete forward search decides which reachable code no call path
+	// reaches; the bounded witness search below only finds example paths.
+	connected := productionPaths
+	if kind == "tests" {
+		connected = forwardWitnesses(index, labels, kind, targets)
+	}
+	// Instantiations of one generic declaration share its symbol: it is
+	// unconnected only when no instantiation is connected.
+	key := lookupKey{scope, kind}
+	connectedIDs := map[string]bool{}
+	for fn := range connected {
+		if id, ok := positions[prog.Fset.Position(fn.Pos())]; ok {
+			connectedIDs[id] = true
+		}
+	}
+	for fn := range targets {
+		if id, ok := positions[prog.Fset.Position(fn.Pos())]; ok && !connectedIDs[id] {
+			if e.unexplained[key] == nil {
+				e.unexplained[key] = map[string]bool{}
+			}
+			e.unexplained[key][id] = true
+		}
 	}
 	for fn := range res.Reachable {
 		id, ok := positions[prog.Fset.Position(fn.Pos())]
@@ -721,7 +806,10 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 				w = []report.Witness{p}
 			}
 		} else {
-			if s.Production == "reachable" || e.symbols[id].TestFile || e.symbols[id].TestSupport {
+			// Code that production reaches only through reflection's exported-method
+			// rule needs its test evidence too, should a review discount that rule.
+			retainedOnly := e.unexplained[lookupKey{scope, "production"}][id]
+			if s.Production == "reachable" && !retainedOnly || e.symbols[id].TestFile || e.symbols[id].TestSupport {
 				continue
 			}
 			w, complete = witnesses(index, fn, labels, kind)
@@ -744,6 +832,13 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 			}
 		}
 	}
+	e.recordReflectiveLookup(scope, kind, res.CallGraph)
+	if kind == "production" {
+		e.recordRuntimeStructs(scope, res)
+	}
+	// Test files convert their fakes to interfaces too.
+	e.recordConversions(lookupKey{scope, kind}, prog, res)
+	e.resolveInstances(lookupKey{scope, kind})
 	e.log(scope + " " + kind + ": graph edges")
 	for _, node := range res.CallGraph.Nodes {
 		for _, edge := range node.Out {

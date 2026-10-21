@@ -69,3 +69,28 @@ func TestTestSupportMatching(t *testing.T) {
 		}
 	}
 }
+
+func TestReflectionReviewsNeedEveryField(t *testing.T) {
+	valid := ReflectionReview{ID: "r", Entry: "example.com/x.F", Reason: "Sees only its own values.", ApprovedBy: "owner", ReviewAfter: "2027-01-01"}
+	c := Default()
+	c.ReflectionReviews = []ReflectionReview{valid}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("valid review rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*ReflectionReview){
+		"id": func(r *ReflectionReview) { r.ID = "" }, "entry": func(r *ReflectionReview) { r.Entry = "" },
+		"reason": func(r *ReflectionReview) { r.Reason = " " }, "approver": func(r *ReflectionReview) { r.ApprovedBy = "" },
+		"date": func(r *ReflectionReview) { r.ReviewAfter = "" },
+	} {
+		review := valid
+		mutate(&review)
+		c.ReflectionReviews = []ReflectionReview{review}
+		if c.Validate() == nil {
+			t.Errorf("review without %s accepted", name)
+		}
+	}
+	c.ReflectionReviews = []ReflectionReview{valid, valid}
+	if c.Validate() == nil {
+		t.Error("duplicate review id accepted")
+	}
+}

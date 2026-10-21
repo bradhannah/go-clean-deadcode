@@ -38,6 +38,42 @@ reconstructed from call-graph edges: reflection may retain a function without an
 ordinary explanatory path. `unexplained_retention` means no witness was obtained
 within the search bounds, not proof that reflection specifically caused it.
 
+## Reflection
+
+RTA keeps every exported method of every runtime type, because reflection could
+call it, even when nothing in the program can. A complete forward search over
+the call graph from each analysis's roots finds what no call path reaches; a
+root without call edges is its own path, and a generic declaration is connected
+when any instantiation is. Of that code, a function or method is kept only by
+the reflection rule when no counted compile-time requirement needs it (test
+programs included) and nothing reachable outside that set refers to it;
+package-level references count as reachable.
+
+Only reflect's method lookups (`Method` and `MethodByName` on `reflect.Value` and
+`reflect.Type`) can call such code. Lookup callers are found through
+compiler-generated wrappers, but not through package reflect's own functions,
+which reach a lookup only for a method value one outside reflect produced. Each
+caller's entries are the first functions outside the standard library on static
+call paths to it, plus module code that refers to a standard-library caller's
+package, which covers function values that static edges do not show. Without
+reviews, the kept code becomes `reflection_retained` notes. With every entry of
+an analysis reviewed, or no lookup at all, as the Go linker would conclude, the
+kept code is unreachable there and its states carry `reflection_reviewed`.
+Methods a compile-time requirement needs become `interface_conformance` notes.
+A generic function is named by its generic declaration, not its instantiations.
+
+Reflection reaches struct fields too (`Field`, `FieldByIndex`, `FieldByName`,
+`FieldByNameFunc` on `reflect.Value` and `reflect.Type`, and `VisibleFields`).
+The standard library's field access (formatting, the encoders, comparison) never
+depends on a field source leaves unused or unwritten; `encoding/binary`, which
+lays every field out, is covered by the layout rule where a struct is passed to
+it directly, but not through a helper that takes `any`. Production callers outside the standard library are listed as field access
+entries: code such as a UI or scripting binding can read any field of a type it
+is given and set unexported ones through unsafe. Until every such entry of a
+scope is reviewed, the fields of struct types production can hand to reflection
+(its runtime types) are kept, and the unused or never-written ones among them are
+`reflection_retained` notes.
+
 Source references are independently collected from type-resolved AST identifiers,
 including dead callers. A reference does not prove runtime reachability. Direct
 SSA edges include unreachable bodies so mutually recursive dead code remains
@@ -60,24 +96,31 @@ a proven direct call. This avoids presenting unrelated test callbacks joined by
 RTA through `testing.tRunner` as the strongest explanation for a subtest body.
 
 Interface obligations include explicit variable declarations and assignments.
-The engine does not yet enumerate every return, argument conversion, embedding,
-or generic constraint requirement. Lack of an obligation record never establishes
-independent deletability. Recognized empty private interface marker methods remain
+Separately, every compile-time method requirement is recorded: each conversion of
+a concrete type to an interface (every `MakeInterface` instruction, so returns,
+arguments, literals and embedding promotion included) and each instantiation of
+a generic function or type, whose type arguments must have the constraint's
+methods. A requirement counts when reachable code makes it: a conversion in a
+reachable function, an instantiation in a reachable function, or one in a type
+or variable declaration. A method a counted requirement needs is never a
+removal finding; it becomes an `interface_conformance` note, since removing it
+means changing the interface or constraint. A requirement only dead code makes
+goes with that code. Recognized empty private interface marker methods remain
 in the symbol inventory and structural count without creating runtime findings.
 A method a runtime type needs to satisfy an interface that reachable code checks
 with a type assertion or type switch is required even when nothing calls it:
 removing it still compiles but silently changes which branch runs. Such methods
 carry an `assertion_satisfaction` obligation, create no finding, and are counted
-as `required_methods`. Reachability already keeps exported methods of runtime
-types, so this matters most for unexported interface methods, such as a test
-fake checked by production code.
+as `required_methods`. This includes exported methods once a reflection review
+lets the analysis discount the reflection rule.
 Methods with no Go body retain an explicit native/assembly review note. Blank
 functions (`func _()`) are not inventoried: nothing can call them, and they exist
 only as compile-time assertions, such as `stringer`'s constant checks.
 
 Assembly, `go:linkname`, external consumers and native callbacks are limitations.
-The tool reports function/method declarations, not all unused fields/variables or
-unreachable branches. Test reachability cannot establish assertion coverage,
+The tool reports functions, methods, package-level types, constants and
+variables, and struct fields of package-level struct types; it does not report
+local declarations or unreachable branches. Test reachability cannot establish assertion coverage,
 observed execution, redundancy, or product intent. Generated declarations are
 included and explicitly labeled, never silently treated as live.
 
@@ -102,10 +145,55 @@ required by an obligation, or reached again is exposed and forms the next wave.
 It repeats until a wave is empty. Calls inside closures count for the enclosing
 declaration, so removing a test also removes what its subtests call.
 
-The plan follows calls and direct function references only. It does not yet
-follow types, fields, constants or variables, and it does not predict compile
-fallout such as type switch cases or interface assertions naming a removed type;
-the build reports those directly.
+Declarations follow uses: a type, field, constant or variable is live when a
+reachable function, exported API in an API package, or another live declaration
+names it. A struct field uses its own type; a live type keeps the fields that are
+never removal candidates, so their types stay live too. Each wave after the first
+recomputes this from the surviving functions, which exposes declarations only
+removed code used.
+
+The plan does not predict compile fallout such as type switch cases or interface
+assertions naming a removed type; the build reports those directly.
+
+## Declarations
+
+Package-level types, constants and variables, and the fields of package-level
+struct types, are inventoried with what each uses. Uses are recorded after the
+whole package is inventoried, so a use may name a later declaration. Field uses in
+generic code resolve to the declared field. A field access is a write when it is
+an assignment or increment target (directly, through indexing or a nested field),
+a composite literal key, an address, a slice of an array field, a range target,
+or the receiver of a pointer-receiver method call; any other access is a read.
+
+Removing a field must not change what its struct means, so these are never
+removal findings: exported, tagged, embedded and blank fields; and every field of
+a layout-significant struct. A struct is layout-significant when it reaches
+`encoding/binary`, `reflect` or `unsafe`, is converted to or from another struct
+type, or is built with an unkeyed composite literal; a struct field type of a
+significant struct is significant too. A struct's unused removable fields are also kept
+when they are all that give it a size, once the fields live code uses are
+counted: distinct pointers to a zero-size value may
+compare equal, so removing them could change identity comparisons, such as a
+stack refusing the same instance twice. Fields whose type is a type parameter
+count as possibly zero-sized. Each such unused field is a `size_guard_field`
+note. Fields of a dead type are removed with it
+and not reported separately. Variables whose initializer calls a function are
+kept for its effects. Blank `_` declarations are not inventoried and do not keep
+what they name live: a `var _ I = (*T)(nil)` assertion on an otherwise unused
+interface is removed together with the interface.
+
+A constant block of two or more names, or a constant of a named type, is a value
+set. An unused value of a set that production otherwise uses becomes a note:
+values can be reserved for future use or mirror an external format. A set with
+no value live in production is classified in full, so an enum only tests use is
+`test_only` together with its type. Constants in test files reserve nothing and
+are always classified.
+
+`never_assigned` reports an eligible field of a live struct that reachable code
+reads and nothing, live or dead, writes. Its reads always see the zero value, so
+the code depending on them cannot behave differently. The plan never removes such
+a field: the reads need review first, and removing the field means removing the
+branches that read it.
 
 ## Repeatability and failures
 

@@ -15,8 +15,8 @@ type planGraph struct {
 	prodLive   map[string]bool
 	testLive   map[string]bool
 	testEdges  map[string][]string
-	references map[string]map[string]bool // test -> declarations it references directly
-	referrers  map[string][]string        // declaration -> tests that reference it directly
+	references map[string]map[string]bool // test-side code -> declarations it references directly
+	referrers  map[string][]string        // declaration -> test-side code that references it directly
 }
 
 func newPlanGraph(r *report.Report) *planGraph {
@@ -35,9 +35,11 @@ func newPlanGraph(r *report.Report) *planGraph {
 			g.testEdges[edge.Caller] = append(g.testEdges[edge.Caller], edge.Callee)
 		}
 	}
+	// Test-side code is a registered test or a declaration in a test file or test
+	// support: a helper's reference matters as much as a test's.
 	for _, ref := range r.References {
 		from := g.symbols[ref.From]
-		if from == nil || !from.RegisteredTest || g.symbols[ref.Symbol] == nil {
+		if from == nil || !from.RegisteredTest && !from.TestFile && !from.TestSupport || g.symbols[ref.Symbol] == nil {
 			continue
 		}
 		if g.references[ref.From] == nil {
@@ -70,9 +72,13 @@ func (g *planGraph) required(id string) bool {
 	return false
 }
 
-// dedicated reports whether a surviving test references production code only
-// where that code is removed, so the test exists for removed code alone.
+// dedicated reports whether a surviving registered test references production
+// code only where that code is removed, so the test exists for removed code
+// alone. Helpers are not removed this way: surviving tests may call them.
 func (g *planGraph) dedicated(test string, removed map[string]int) bool {
+	if !g.symbols[test].RegisteredTest {
+		return false
+	}
 	production := 0
 	for id := range g.references[test] {
 		if g.testHelper(id) {
@@ -100,6 +106,9 @@ func (g *planGraph) reachedByTests(removed map[string]int) map[string]bool {
 	var queue []string
 	reached := map[string]bool{}
 	for id := range g.testLive {
+		if kind := g.symbols[id].Kind; kind != "function" && kind != "method" {
+			continue // Declarations are reached through uses, not entry points.
+		}
 		if _, gone := removed[id]; g.testLive[id] && !called[id] && !gone {
 			reached[id] = true
 			queue = append(queue, id)
@@ -124,7 +133,8 @@ func (e *engine) plan() report.Plan {
 	reasons := map[string]string{}
 	var next []string
 	for _, f := range e.report.Findings {
-		if f.Status == "unresolved" {
+		// A never-assigned field is used; its fix is a review, not a removal.
+		if f.Status == "unresolved" && f.Category != "never_assigned" {
 			next = append(next, f.Symbol)
 			reasons[f.Symbol] = f.Category
 		}
@@ -146,19 +156,59 @@ func (e *engine) plan() report.Plan {
 		reached := g.reachedByTests(removed)
 		next = nil
 		for id := range g.testLive {
-			if _, gone := removed[id]; gone || reached[id] || g.prodLive[id] || g.required(id) {
+			if _, gone := removed[id]; gone || reached[id] || g.prodLive[id] || g.required(id) || e.decl.decls[id] != nil {
 				continue
 			}
 			next = append(next, id)
 			reasons[id] = "exposed"
 		}
+		next = append(next, e.exposedDeclarations(g, reached, removed)...)
+		for _, id := range next {
+			if reasons[id] == "" {
+				reasons[id] = "exposed"
+			}
+		}
 	}
 	for _, w := range plan.Waves {
 		plan.Functions += w.Functions + w.TestHelpers
+		plan.Declarations += w.Declarations
 		plan.Tests += w.Tests
 		plan.Lines += w.Lines
 	}
 	return plan
+}
+
+// exposedDeclarations lists live types, fields, constants and variables that
+// nothing surviving uses any more and that may be removed.
+func (e *engine) exposedDeclarations(g *planGraph, reached map[string]bool, removed map[string]int) []string {
+	seeds := map[string]bool{}
+	for id := range g.prodLive {
+		if _, gone := removed[id]; g.prodLive[id] && !gone && e.decl.decls[id] == nil {
+			seeds[id] = true
+		}
+	}
+	for id := range reached {
+		seeds[id] = true
+	}
+	for _, roots := range e.decl.roots {
+		for id := range roots {
+			seeds[id] = true
+		}
+	}
+	live := e.liveDeclarations(seeds, removed, e.significant)
+	wasLive := func(id string) bool { return g.prodLive[id] || g.testLive[id] }
+	inProduction := func(id string) bool { _, gone := removed[id]; return live[id] && g.prodLive[id] && !gone }
+	liveGroups := e.liveEnumGroups(inProduction)
+	var exposed []string
+	for id := range e.decl.decls {
+		if _, gone := removed[id]; gone || live[id] || !wasLive(id) {
+			continue
+		}
+		if kept, _ := e.keptDeclaration(id, e.significant, liveGroups, func(id string) bool { return live[id] }, inProduction); !kept {
+			exposed = append(exposed, id)
+		}
+	}
+	return exposed
 }
 
 func (g *planGraph) wave(number int, ids []string, reasons map[string]string, removed map[string]int) report.Wave {
@@ -184,6 +234,8 @@ func (g *planGraph) wave(number int, ids []string, reasons map[string]string, re
 		switch {
 		case s.RegisteredTest:
 			w.Tests++
+		case s.Kind != "function" && s.Kind != "method":
+			w.Declarations++
 		case g.testHelper(id):
 			w.TestHelpers++
 		default:

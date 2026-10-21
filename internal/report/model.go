@@ -17,11 +17,14 @@ type Report struct {
 	Groups        []Group           `json:"groups"`
 	Findings      []Finding         `json:"findings"`
 	Exceptions    []ExceptionResult `json:"exceptions"`
-	Diagnostics   []Diagnostic      `json:"diagnostics"`
-	Summary       Summary           `json:"summary"`
-	Plan          Plan              `json:"plan"`
-	Metrics       Metrics           `json:"metrics"`
-	Limitations   []string          `json:"limitations"`
+	// ReflectionReviews are the configured reflection reviews and their status.
+	ReflectionReviews []ReflectionReviewResult `json:"reflection_reviews"`
+	Diagnostics       []Diagnostic             `json:"diagnostics"`
+	Summary           Summary                  `json:"summary"`
+	Plan              Plan                     `json:"plan"`
+	Notes             []Note                   `json:"notes"`
+	Metrics           Metrics                  `json:"metrics"`
+	Limitations       []string                 `json:"limitations"`
 }
 
 type Scope struct {
@@ -38,8 +41,10 @@ type Scope struct {
 	EntryPoints   []EntryPoint `json:"entry_points"`
 	APIRoots      string       `json:"api_roots,omitempty"`
 	TestSupport   []string     `json:"test_support,omitempty"`
-	Tests         bool         `json:"tests"`
-	NestedModules []string     `json:"nested_modules"`
+	// ReflectiveLookups lists reachable reflective method lookups.
+	ReflectiveLookups []ReflectiveLookup `json:"reflective_lookups"`
+	Tests             bool               `json:"tests"`
+	NestedModules     []string           `json:"nested_modules"`
 }
 
 type EntryPoint struct {
@@ -80,6 +85,30 @@ type State struct {
 	TestRoots          []string  `json:"test_roots"`
 	Witnesses          []Witness `json:"witnesses"`
 	ProvenanceComplete bool      `json:"witness_search_complete"`
+	// ReflectionReviewed marks a state made unreachable because every
+	// reflective method lookup in the analysis is reviewed.
+	ReflectionReviewed bool `json:"reflection_reviewed,omitempty"`
+}
+
+// ReflectiveLookup is a reachable call to reflect's method lookup by index or
+// name. Via calls the lookup; Entry is the first function outside the standard
+// library on a call path to Via, which is what a review considers.
+type ReflectiveLookup struct {
+	Analysis string `json:"analysis"`
+	Kind     string `json:"kind"`
+	Entry    string `json:"entry"`
+	Via      string `json:"via"`
+}
+
+// ReflectionReviewResult is a configured reflection review and whether it
+// matched a lookup entry.
+type ReflectionReviewResult struct {
+	ID          string `json:"id"`
+	Entry       string `json:"entry"`
+	Reason      string `json:"reason"`
+	ApprovedBy  string `json:"approved_by"`
+	ReviewAfter string `json:"review_after"`
+	Status      string `json:"status"`
 }
 
 type Witness struct {
@@ -124,19 +153,22 @@ type Group struct {
 // exposes, until nothing new becomes unused. It never edits source; the waves
 // describe what repeated clean-up passes would each find.
 type Plan struct {
-	Waves     []Wave `json:"waves"`
-	Functions int    `json:"functions"`
-	Tests     int    `json:"tests"`
-	Lines     int    `json:"lines"`
+	Waves        []Wave `json:"waves"`
+	Functions    int    `json:"functions"`
+	Declarations int    `json:"declarations"`
+	Tests        int    `json:"tests"`
+	Lines        int    `json:"lines"`
 }
 
 type Wave struct {
-	Number      int       `json:"number"`
-	Removals    []Removal `json:"removals"`
-	Functions   int       `json:"functions"`
-	TestHelpers int       `json:"test_helpers"`
-	Tests       int       `json:"tests"`
-	Lines       int       `json:"lines"`
+	Number    int       `json:"number"`
+	Removals  []Removal `json:"removals"`
+	Functions int       `json:"functions"`
+	// Declarations counts types, fields, constants and variables.
+	Declarations int `json:"declarations"`
+	TestHelpers  int `json:"test_helpers"`
+	Tests        int `json:"tests"`
+	Lines        int `json:"lines"`
 	// Tests that stay but directly reference something this wave removes; each
 	// needs an edit, and may be a live-behaviour test using it as a fixture.
 	TestsNeedingEdits []string `json:"tests_needing_edits"`
@@ -160,6 +192,16 @@ type Finding struct {
 	Scopes    []string `json:"scopes"`
 	Status    string   `json:"status"`
 	Exception string   `json:"exception,omitempty"`
+	// Reads lists where live code reads a never_assigned field.
+	Reads []Location `json:"reads,omitempty"`
+}
+
+// Note is review information that is never a finding, such as an unused value
+// of an enum that is otherwise in use.
+type Note struct {
+	Symbol  string `json:"symbol"`
+	Kind    string `json:"kind"`
+	Message string `json:"message"`
 }
 
 type ExceptionResult struct {
@@ -189,6 +231,8 @@ type Summary struct {
 	StaleExceptions   int `json:"stale_exceptions"`
 	StructuralMethods int `json:"structural_methods"`
 	RequiredMethods   int `json:"required_methods"`
+	NeverAssigned     int `json:"never_assigned"`
+	Notes             int `json:"notes"`
 }
 
 type Metrics struct {
@@ -203,13 +247,13 @@ func New(mode string) *Report {
 	return &Report{SchemaVersion: SchemaVersion, ToolVersion: ToolVersion, Mode: mode,
 		Complete: true, Scopes: []Scope{}, Symbols: []Symbol{}, Edges: []Edge{},
 		References: []Reference{}, Groups: []Group{}, Findings: []Finding{},
-		Exceptions: []ExceptionResult{}, Diagnostics: []Diagnostic{}, Plan: Plan{Waves: []Wave{}},
+		Exceptions: []ExceptionResult{}, ReflectionReviews: []ReflectionReviewResult{}, Diagnostics: []Diagnostic{}, Plan: Plan{Waves: []Wave{}}, Notes: []Note{},
 		Limitations: []string{
 			"Reachability is a conservative static approximation, not evidence of execution or assertion coverage.",
 			"Test witnesses are may-reach paths in a combined test-executable analysis; dynamic targets can be shared across tests and packages.",
 			"External consumers, assembly, go:linkname and native callbacks require explicit review.",
-			"Only configured build variants are analyzed; uncalled methods may still be required by interfaces or generic constraints.",
-			"Findings concern source function/method declarations, not unused variables, fields, or unreachable branches.",
+			"Only configured build variants are analyzed; code that only another GOOS, GOARCH or build tag uses looks unused.",
+			"Findings concern functions, methods, package-level declarations and struct fields, not local variables or unreachable branches.",
 		}}
 }
 

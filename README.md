@@ -58,6 +58,26 @@ analysis or acceptance; JSON always contains the complete result.
 | `unreachable` | Non-test declaration not reachable from selected executables or included test executables. |
 | `test_only` | Non-test declaration unreachable in the production analysis but reachable in the separate test analysis. |
 | `unused_test_helper` | Declaration in a test file unreachable from the test harness. This also includes documentation-only examples, not just helpers. |
+| `never_assigned` | Unexported struct field that reachable code reads but nothing ever writes, so every read sees the zero value. The finding lists the reads; the fix is a review of the code that depends on them, not a removal. |
+
+Findings cover functions, methods, package-level types, constants and variables,
+and struct fields. Some unused declarations are never findings because removing
+them would change a meaning: exported fields, tagged or embedded fields, every
+field of a struct whose layout matters (used with `encoding/binary`, `reflect` or
+`unsafe`, converted to another struct type, or built with an unkeyed literal),
+unused fields that are all that keep a struct from being zero-sized (pointer
+identity depends on it),
+and variables whose initializer calls something. An unused value of a constant
+block or typed enum that production otherwise uses is reported as a note for review,
+not a finding.
+
+Reachability keeps exported methods of runtime types because reflection could
+call them. The report lists which code performs reflective method lookup, and
+which code outside the standard library reaches struct fields by reflection;
+once an owner reviews each entry as never seeing the module's values (see
+[configuration](docs/configuration.md#reflection-reviews)), code and fields kept
+only by that rule are classified like any other, and until then they are
+reported as `reflection_retained` notes.
 
 These are review categories, not deletion instructions. Test-only code can be
 legitimate infrastructure or an external API. Two tests reaching the same code do

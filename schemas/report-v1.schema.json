@@ -127,6 +127,15 @@
         "id": {
           "type": "string"
         },
+        "reads": {
+          "items": {
+            "$ref": "#/$defs/Location"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "scopes": {
           "items": {
             "type": "string"
@@ -230,6 +239,26 @@
       ],
       "type": "object"
     },
+    "Note": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "symbol",
+        "kind",
+        "message"
+      ],
+      "type": "object"
+    },
     "Obligation": {
       "additionalProperties": false,
       "properties": {
@@ -257,6 +286,9 @@
     "Plan": {
       "additionalProperties": false,
       "properties": {
+        "declarations": {
+          "type": "integer"
+        },
         "functions": {
           "type": "integer"
         },
@@ -279,6 +311,7 @@
       "required": [
         "waves",
         "functions",
+        "declarations",
         "tests",
         "lines"
       ],
@@ -308,6 +341,62 @@
         "symbol",
         "kind",
         "location"
+      ],
+      "type": "object"
+    },
+    "ReflectionReviewResult": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_by": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "review_after": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "entry",
+        "reason",
+        "approved_by",
+        "review_after",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ReflectiveLookup": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "via": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "analysis",
+        "kind",
+        "entry",
+        "via"
       ],
       "type": "object"
     },
@@ -412,12 +501,30 @@
         "mode": {
           "type": "string"
         },
+        "notes": {
+          "items": {
+            "$ref": "#/$defs/Note"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "plan": {
           "$ref": "#/$defs/Plan"
         },
         "references": {
           "items": {
             "$ref": "#/$defs/Reference"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "reflection_reviews": {
+          "items": {
+            "$ref": "#/$defs/ReflectionReviewResult"
           },
           "type": [
             "array",
@@ -464,9 +571,11 @@
         "groups",
         "findings",
         "exceptions",
+        "reflection_reviews",
         "diagnostics",
         "summary",
         "plan",
+        "notes",
         "metrics",
         "limitations"
       ],
@@ -529,6 +638,15 @@
             "null"
           ]
         },
+        "reflective_lookups": {
+          "items": {
+            "$ref": "#/$defs/ReflectiveLookup"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "tags": {
           "items": {
             "type": "string"
@@ -563,6 +681,7 @@
         "complete",
         "packages",
         "entry_points",
+        "reflective_lookups",
         "tests",
         "nested_modules"
       ],
@@ -582,6 +701,9 @@
             "array",
             "null"
           ]
+        },
+        "reflection_reviewed": {
+          "type": "boolean"
         },
         "scope": {
           "type": "string"
@@ -628,6 +750,12 @@
         "accepted": {
           "type": "integer"
         },
+        "never_assigned": {
+          "type": "integer"
+        },
+        "notes": {
+          "type": "integer"
+        },
         "required_methods": {
           "type": "integer"
         },
@@ -662,7 +790,9 @@
         "accepted",
         "stale_exceptions",
         "structural_methods",
-        "required_methods"
+        "required_methods",
+        "never_assigned",
+        "notes"
       ],
       "type": "object"
     },
@@ -749,6 +879,9 @@
     "Wave": {
       "additionalProperties": false,
       "properties": {
+        "declarations": {
+          "type": "integer"
+        },
         "functions": {
           "type": "integer"
         },
@@ -787,6 +920,7 @@
         "number",
         "removals",
         "functions",
+        "declarations",
         "test_helpers",
         "tests",
         "lines",

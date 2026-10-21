@@ -232,5 +232,11 @@ func forwardWitnesses(index *graphIndex, seeds map[*ssa.Function]string, context
 		}
 		out[n.Func] = report.Witness{Root: origin[n], Context: context, Kind: kind, Path: path}
 	}
+	// A root that neither calls nor is called has no call-graph node.
+	for _, f := range roots {
+		if _, ok := out[f]; !ok && targets[f] && g.Nodes[f] == nil {
+			out[f] = report.Witness{Root: seeds[f], Context: context, Kind: "static", Path: []string{functionID(f)}}
+		}
+	}
 	return out
 }
