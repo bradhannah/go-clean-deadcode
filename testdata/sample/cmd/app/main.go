@@ -14,4 +14,5 @@ func main() {
 	lib.Boxed()
 	lib.Distinct()
 	lib.PrintReceipt()
+	lib.Left()
 }

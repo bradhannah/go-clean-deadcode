@@ -124,6 +124,11 @@ type instance struct{ id int }
 
 func Distinct() bool { return &instance{} != &instance{} }
 
+// pair keeps its size through left, which is used, so right is a finding.
+type pair struct{ left, right int }
+
+func Left() int { return pair{left: 1}.left }
+
 // box is generic: its methods use instantiated fields, which are the declared
 // ones. spare is unused but stays: box[struct{}] would have no size without it.
 type box[T any] struct {

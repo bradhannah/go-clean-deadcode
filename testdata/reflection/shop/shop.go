@@ -31,7 +31,7 @@ func (c *counter) Reset() { c.n = 0 }
 
 type Tally[T Counted] struct{ items []T }
 
-func Tallies() int { return len(Tally[*counter]{}.items) }
+func Tallies() int { return len(Tally[*counter]{items: []*counter{{}}}.items) }
 
 // Only dead code converts tag to Labeler, so Label goes with it.
 type Labeler interface{ Label() string }
