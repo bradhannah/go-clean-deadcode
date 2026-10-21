@@ -32,7 +32,7 @@ func Text(w io.Writer, r *Report, only string) error {
 	for _, x := range r.ReflectionReviews {
 		fmt.Fprintf(&b, "  Reflection review %s [%s]: %s\n", x.ID, x.Status, x.Entry)
 	}
-	fmt.Fprintf(&b, "\nSummary\n  Unreachable functions: %d\n  Non-test functions reachable only in tests: %d\n  Unreachable test declarations: %d\n  Unresolved findings: %d\n  Accepted exceptions: %d\n  Stale exceptions: %d\n", r.Summary.Unreachable, r.Summary.TestOnly, r.Summary.UnusedTestHelpers, r.Summary.Unresolved, r.Summary.Accepted, r.Summary.StaleExceptions)
+	fmt.Fprintf(&b, "\nSummary\n  Unreachable declarations: %d\n  Non-test declarations reachable only in tests: %d\n  Unreachable test declarations: %d\n  Unresolved findings: %d\n  Accepted exceptions: %d\n  Stale exceptions: %d\n", r.Summary.Unreachable, r.Summary.TestOnly, r.Summary.UnusedTestHelpers, r.Summary.Unresolved, r.Summary.Accepted, r.Summary.StaleExceptions)
 	fmt.Fprintf(&b, "  Structural interface-marker methods: %d\n", r.Summary.StructuralMethods)
 	fmt.Fprintf(&b, "  Methods required by asserted interfaces: %d\n", r.Summary.RequiredMethods)
 	fmt.Fprintf(&b, "  Never-assigned fields: %d\n  Notes: %d\n", r.Summary.NeverAssigned, r.Summary.Notes)

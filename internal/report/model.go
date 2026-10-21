@@ -251,8 +251,8 @@ func New(mode string) *Report {
 			"Reachability is a conservative static approximation, not evidence of execution or assertion coverage.",
 			"Test witnesses are may-reach paths in a combined test-executable analysis; dynamic targets can be shared across tests and packages.",
 			"External consumers, assembly, go:linkname and native callbacks require explicit review.",
-			"Only configured build variants are analyzed; uncalled methods may still be required by interfaces or generic constraints.",
-			"Findings concern source function/method declarations, not unused variables, fields, or unreachable branches.",
+			"Only configured build variants are analyzed; code that only another GOOS, GOARCH or build tag uses looks unused.",
+			"Findings concern functions, methods, package-level declarations and struct fields, not local variables or unreachable branches.",
 		}}
 }
 
