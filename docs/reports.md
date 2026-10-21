@@ -18,7 +18,12 @@ Structural validation is not semantic acceptance. A consumer should:
 ## Records
 
 - `scopes`: module/build selections, discovered/classified executable packages,
-  test inclusion and nested modules.
+  test inclusion and nested modules, and `reflective_lookups`: reachable
+  reflective method lookups per analysis and production field access outside
+  the standard library (`kind` `method` or `field`), with the `via` caller and
+  the `entry` a reflection review names.
+- `reflection_reviews`: configured reviews with `matched`, `unmatched` or
+  `expired` status; the latter two count as stale exceptions.
 - `symbols`: qualified identities, declaration locations, normalized declaration
   fingerprint, generated/test-file flags, test-harness registration, per-scope
   production/test states, explanatory paths and known compile-time obligations.
@@ -32,8 +37,15 @@ Structural validation is not semantic acceptance. A consumer should:
   accepted disposition, and any matching exception ID. A `never_assigned`
   finding lists the live `reads` of its field.
 - `notes`: review information that is never a finding: an `unused_enum_value`
-  is an unused value of a constant set otherwise in use, and a
-  `size_guard_field` is an unused field kept because it gives its struct a size.
+  is an unused value of a constant set production otherwise uses, and a
+  `size_guard_field` is an unused field kept because it gives its struct a size,
+  a `reflection_retained` function or method is kept only because reflection
+  could call it and an entry into reflective method lookup is unreviewed (or a
+  field is unused or never written, but unreviewed reflective field access can
+  see its struct), and
+  an `interface_conformance` method has no call path but reachable code needs it
+  at compile time, by converting its type to an interface or instantiating a
+  generic with it.
 - `exceptions`: reasons, declared approval, review dates and match status.
 - `diagnostics`: scope/configuration/load errors and explicit exclusions.
 - `plan`: a simulated removal of every unresolved finding, in waves. Wave 1 is
@@ -42,10 +54,12 @@ Structural validation is not semantic acceptance. A consumer should:
   `exposed`: code that only removed code reached. Each wave counts functions,
   declarations (types, fields, constants and variables), test helpers, tests and
   declaration lines, and lists `tests_needing_edits`:
-  surviving tests that directly reference a removal. A removal records the tests
-  that reference it (`referenced_by`, at most 20) and `other_packages` when a
-  referencing test is in another package, which usually means shared test
-  support. The plan edits nothing and assumes every finding is removed, except
+  surviving test-side code that directly references a removal. Test-side code is
+  registered tests and declarations in test files or test support, so helpers
+  count; only registered tests are removed as `dedicated_test`, since surviving
+  tests may call a helper. A removal records the test-side code that references
+  it (`referenced_by`, at most 20) and `other_packages` when any of it is in
+  another package, which usually means shared test support. The plan edits nothing and assumes every finding is removed, except
   `never_assigned` fields, which it leaves for review.
 - `metrics`: this invocation's measured phase/total times and cache-hit status.
 - `limitations`: precision boundaries that consumers must preserve.

@@ -471,10 +471,10 @@ func (e *engine) layoutCall(p *packages.Package, call *ast.CallExpr) {
 
 // layoutSignificant closes significance over field types: a struct inside a
 // layout-significant struct is laid out with it.
-func (e *engine) layoutSignificant() map[string]bool {
+func (e *engine) layoutSignificant(seeds map[string]bool) map[string]bool {
 	significant := map[string]bool{}
 	var queue []string
-	for id := range e.decl.significant {
+	for id := range seeds {
 		significant[id] = true
 		queue = append(queue, id)
 	}
@@ -599,7 +599,13 @@ func (e *engine) liveDeclarations(seeds map[string]bool, removed map[string]int,
 // declarationStates marks each inventoried declaration reachable in the scopes
 // and analyses whose functions or exported API use it.
 func (e *engine) declarationStates() map[string]bool {
-	significant := e.layoutSignificant()
+	// Fields that unreviewed reflection can see are kept like laid-out ones.
+	e.layoutOnly = e.layoutSignificant(e.decl.significant)
+	seeds := maps.Clone(e.decl.significant)
+	for id := range e.reflected {
+		seeds[id] = true
+	}
+	significant := e.layoutSignificant(seeds)
 	// Whether a struct needs its unused fields for its size depends on which
 	// fields live code uses, and what a size guard keeps uses no field.
 	e.sizeGuarded = map[string]bool{}
@@ -667,8 +673,10 @@ func (e *engine) liveEnumGroups(live func(string) bool) map[string]bool {
 }
 
 // keptDeclaration reports a declaration that is never a removal finding, with
-// the note to record instead, if any.
-func (e *engine) keptDeclaration(id string, significant, liveGroups map[string]bool, live func(string) bool) (bool, string) {
+// the note to record instead, if any. An unused enum value is kept only while
+// production uses its enum: an enum only tests use goes with its type, and test
+// files reserve no values.
+func (e *engine) keptDeclaration(id string, significant, liveGroups map[string]bool, live, inProduction func(string) bool) (bool, string) {
 	d := e.decl.decls[id]
 	switch {
 	case d == nil:
@@ -679,7 +687,9 @@ func (e *engine) keptDeclaration(id string, significant, liveGroups map[string]b
 		return true, ""
 	case d.kind == "var" && d.effects:
 		return true, ""
-	case d.kind == "const" && d.enumType != "" && live(d.enumType):
+	case d.kind == "const" && e.symbols[id].TestFile:
+		return false, ""
+	case d.kind == "const" && d.enumType != "" && inProduction(d.enumType):
 		return true, "Unused value of the enum " + d.enumType + ", which is in use; review it, but it is not removed by default."
 	case d.kind == "const" && liveGroups[d.enumGroup]:
 		return true, "Unused value of a constant block that is in use; review it, but it is not removed by default."

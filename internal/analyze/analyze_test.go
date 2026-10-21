@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bradhannah/go-clean-deadcode/internal/config"
 	"github.com/bradhannah/go-clean-deadcode/internal/report"
@@ -345,6 +346,11 @@ func TestRemovalPlanFollowsTheCascade(t *testing.T) {
 	if !slices.Contains(r.Plan.Waves[0].TestsNeedingEdits, "example.com/sample/lib.TestMixed") {
 		t.Errorf("TestMixed references removed code and survives: %v", r.Plan.Waves[0].TestsNeedingEdits)
 	}
+	retired := planned["lib.Retired"]
+	if !retired.OtherPackages || !slices.Contains(retired.ReferencedBy, "example.com/sample/consumer.checkRetired") ||
+		!slices.Contains(r.Plan.Waves[0].TestsNeedingEdits, "example.com/sample/consumer.checkRetired") {
+		t.Errorf("a helper in another package must count as a referrer: %+v", retired)
+	}
 	if planned["lib.Obsolete"].Lines < 1 || r.Plan.Lines < r.Plan.Waves[0].Lines {
 		t.Errorf("line counts missing: %+v", r.Plan)
 	}
@@ -361,6 +367,11 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 		"lib.deadConfig": "unreachable", "lib.deadLimit": "unreachable", "lib.deadTable": "unreachable",
 		"lib.settings.unused": "unreachable", "lib.settings.enabled": "never_assigned", "lib.pair.right": "unreachable",
 		"lib.testOnlyKind": "test_only", "lib.unusedFixture": "unused_test_helper",
+		// Nothing in the program looks methods up by reflection, so the rule that
+		// keeps exported methods of runtime types does not keep these.
+		"lib.Receipt.Total": "unreachable", "lib.double": "unreachable",
+		"lib.Preset": "test_only", "lib.PresetMorning": "test_only", "lib.PresetNoon": "test_only",
+		"lib.settingUnused": "unused_test_helper",
 	} {
 		if got := found[name]; got != want {
 			t.Errorf("%s: got %q want %q", name, got, want)
@@ -398,5 +409,143 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 	}
 	if r.Plan.Declarations == 0 {
 		t.Errorf("plan counts no declarations: %+v", r.Plan)
+	}
+}
+
+func reflectionFixture(t *testing.T, reviews ...config.ReflectionReview) *report.Report {
+	t.Helper()
+	root, err := filepath.Abs("../../testdata/reflection")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := config.Default()
+	c.Modules[0].EntryPoints = []config.EntryPoint{{Package: "./cmd/app", Role: "application"}}
+	c.ReflectionReviews = reviews
+	r := Run(context.Background(), Options{Root: root, Config: c})
+	if !r.Complete {
+		t.Fatalf("incomplete: %+v", r.Diagnostics)
+	}
+	return r
+}
+
+// reflectionFindings leaves out the fixture's ordinary dead code.
+func reflectionFindings(r *report.Report) map[string]string {
+	found := findingsOf(r)
+	for _, dead := range []string{"shop.Labeler", "shop.tag", "shop.tag.Label", "shop.unusedLabel", "panel.plain.spare"} {
+		delete(found, "example.com/reflection/"+dead)
+	}
+	return found
+}
+
+func reflectionReview(entry string) config.ReflectionReview {
+	return config.ReflectionReview{ID: "R-1", Entry: entry, Reason: "Only sees the plugin's own handler.",
+		ApprovedBy: "owner", ReviewAfter: time.Now().AddDate(0, 1, 0).Format("2006-01-02")}
+}
+
+func TestReflectiveLookupKeepsExportedMethodsUntilReviewed(t *testing.T) {
+	r := reflectionFixture(t)
+	// fmt reads Receipt's fields too, but the standard library never depends on
+	// an unexported field that source leaves unused.
+	want := []report.ReflectiveLookup{
+		{Analysis: "production", Kind: "field", Entry: "example.com/reflection/bind.Register", Via: "example.com/reflection/bind.Register"},
+		{Analysis: "production", Kind: "method", Entry: "example.com/reflection/plugin.Call", Via: "example.com/reflection/plugin.Call"},
+	}
+	if lookups := r.Scopes[0].ReflectiveLookups; !slices.Equal(lookups, want) {
+		t.Fatalf("lookups: %+v", lookups)
+	}
+	if got := findingsOf(r)["example.com/reflection/panel.plain.spare"]; got != "unreachable" {
+		t.Errorf("a struct reflection never sees keeps no unused field; got %q", got)
+	}
+	if found := reflectionFindings(r); len(found) != 0 {
+		t.Errorf("unreviewed reflection must not create findings: %v", found)
+	}
+	notes := map[string]string{}
+	for _, n := range r.Notes {
+		notes[strings.TrimPrefix(n.Symbol, "example.com/reflection/")] = n.Kind
+	}
+	if notes["shop.Receipt.Total"] != "reflection_retained" || notes["shop.double"] != "reflection_retained" ||
+		notes["shop.square.Area"] != "" || notes["panel.Panel.signal"] != "reflection_retained" ||
+		notes["panel.Panel.ready"] != "reflection_retained" || notes["shop.Receipt.amount"] != "" {
+		t.Errorf("notes: %v", notes)
+	}
+}
+
+func TestReviewedReflectionFindsCodeOnlyItKept(t *testing.T) {
+	r := reflectionFixture(t, reflectionReview("example.com/reflection/plugin.Call"))
+	if r.ReflectionReviews[0].Status != "matched" || r.Summary.StaleExceptions != 0 {
+		t.Fatalf("review: %+v stale=%d", r.ReflectionReviews, r.Summary.StaleExceptions)
+	}
+	found := findingsOf(r)
+	for name, want := range map[string]string{"shop.Receipt.Total": "test_only", "shop.double": "test_only"} {
+		if got := found["example.com/reflection/"+name]; got != want {
+			t.Errorf("%s: got %q want %q", name, got, want)
+		}
+	}
+	for _, kept := range []string{"plugin.Start", "shop.square.Area", "shop.Print", "shop.Count", "shop.fakePricer.Price", "shop.counter.Reset"} {
+		if got := found["example.com/reflection/"+kept]; got != "" {
+			t.Errorf("%s must not be a finding; got %q", kept, got)
+		}
+	}
+	conformance := map[string]bool{}
+	for _, n := range r.Notes {
+		if n.Kind == "interface_conformance" {
+			conformance[strings.TrimPrefix(n.Symbol, "example.com/reflection/")] = true
+		}
+	}
+	if !conformance["shop.square.Area"] || !conformance["shop.counter.Reset"] {
+		t.Errorf("Area and Reset need interface_conformance notes: %+v", r.Notes)
+	}
+	for _, dead := range []string{"shop.tag.Label", "shop.unusedLabel"} {
+		if got := found["example.com/reflection/"+dead]; got != "unreachable" {
+			t.Errorf("%s: a requirement only dead code makes must not keep it; got %q", dead, got)
+		}
+	}
+}
+
+func TestReviewedFieldReflectionFindsFields(t *testing.T) {
+	r := reflectionFixture(t, reflectionReview("example.com/reflection/bind.Register"))
+	found := findingsOf(r)
+	for name, want := range map[string]string{"panel.Panel.signal": "unreachable", "panel.Panel.ready": "never_assigned"} {
+		if got := found["example.com/reflection/"+name]; got != want {
+			t.Errorf("%s: got %q want %q", name, got, want)
+		}
+	}
+	// The method lookup is still unreviewed.
+	if got := found["example.com/reflection/shop.Receipt.Total"]; got != "" {
+		t.Errorf("a field review must not review method lookups; got %q", got)
+	}
+}
+
+func TestUnmatchedReflectionReviewIsStale(t *testing.T) {
+	r := reflectionFixture(t, reflectionReview("example.com/reflection/plugin.Missing"))
+	if r.ReflectionReviews[0].Status != "unmatched" || r.Summary.StaleExceptions != 1 || len(reflectionFindings(r)) != 0 {
+		t.Fatalf("review: %+v stale=%d findings=%v", r.ReflectionReviews, r.Summary.StaleExceptions, reflectionFindings(r))
+	}
+}
+
+func TestAliasedAssertionsAreDeterministic(t *testing.T) {
+	var first []byte
+	for range 5 {
+		r := reflectionFixture(t)
+		r.Metrics = report.Metrics{}
+		data, _ := json.Marshal(r)
+		if first == nil {
+			first = data
+			for _, s := range r.Symbols {
+				if !strings.HasSuffix(s.ID, "shop.item.describe") {
+					continue
+				}
+				if len(s.Obligations) == 0 {
+					t.Error("item.describe needs an assertion obligation")
+				}
+				for _, o := range s.Obligations {
+					if !strings.Contains(o.Description, "shop.Describer or example.com/reflection/shop.DescriberAlias") {
+						t.Errorf("an aliased assertion must name every name: %s", o.Description)
+					}
+				}
+			}
+		} else if string(data) != string(first) {
+			t.Fatal("equivalent input produced nondeterministic report")
+		}
 	}
 }

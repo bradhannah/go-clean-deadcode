@@ -42,3 +42,21 @@ type unusedFixture struct{}
 type setupState struct{ calls int }
 
 func TestTestOnlyKind(t *testing.T) { _ = testOnlyKind{}; Live(); t.Helper() }
+
+func TestPreset(t *testing.T) {
+	if PresetMorning == PresetNoon {
+		t.Fatal("presets collide")
+	}
+}
+
+// The test settings block keeps only what tests use.
+const (
+	settingUsed   = 1
+	settingUnused = 2
+)
+
+func TestSetting(t *testing.T) {
+	if settingUsed != 1 {
+		t.Fatal("setting")
+	}
+}

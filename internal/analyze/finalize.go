@@ -46,6 +46,7 @@ func (e *engine) finalize(c config.Config) {
 			e.report.Edges = append(e.report.Edges, edge)
 		}
 	}
+	reflectionNotes := e.applyReflectionReviews(c)
 	e.significant = e.declarationStates()
 	liveAny := map[string]bool{}
 	for id, states := range e.states {
@@ -54,8 +55,18 @@ func (e *engine) finalize(c config.Config) {
 		}
 	}
 	live := func(id string) bool { return liveAny[id] }
-	liveGroups := e.liveEnumGroups(live)
+	inProduction := func(id string) bool {
+		for _, st := range e.states[id] {
+			if st.Production == "reachable" {
+				return true
+			}
+		}
+		return false
+	}
+	liveGroups := e.liveEnumGroups(inProduction)
 	for id, s := range e.symbols {
+		// Obligations are recorded while walking maps; order them for stable output.
+		s.Obligations = unique(s.Obligations)
 		bodies := make([]string, 0, len(e.bodies[id]))
 		for b := range e.bodies[id] {
 			bodies = append(bodies, b)
@@ -103,8 +114,12 @@ func (e *engine) finalize(c config.Config) {
 				break
 			}
 		}
+		if category != "" && e.symbols[id].Kind == "method" && e.compileRequired(id) {
+			category = ""
+			e.report.Notes = append(e.report.Notes, e.conformanceNote(id))
+		}
 		if category != "" {
-			if kept, note := e.keptDeclaration(id, e.significant, liveGroups, live); kept {
+			if kept, note := e.keptDeclaration(id, e.significant, liveGroups, live, inProduction); kept {
 				category = ""
 				if note != "" {
 					e.report.Notes = append(e.report.Notes, report.Note{Symbol: id, Kind: "unused_enum_value", Message: note})
@@ -126,7 +141,12 @@ func (e *engine) finalize(c config.Config) {
 			Category: "never_assigned", Symbol: id, Scopes: scopes, Status: "unresolved", Reads: reads})
 	}
 	e.report.Notes = append(e.report.Notes, e.sizeGuardNotes(e.significant, live)...)
-	sort.Slice(e.report.Notes, func(i, j int) bool { return e.report.Notes[i].Symbol < e.report.Notes[j].Symbol })
+	e.report.Notes = append(e.report.Notes, reflectionNotes...)
+	e.report.Notes = append(e.report.Notes, e.reflectionFieldNotes(e.layoutOnly, live)...)
+	sort.Slice(e.report.Notes, func(i, j int) bool {
+		a, b := e.report.Notes[i], e.report.Notes[j]
+		return a.Symbol < b.Symbol || a.Symbol == b.Symbol && a.Kind < b.Kind
+	})
 	sort.Slice(e.report.Symbols, func(i, j int) bool { return e.report.Symbols[i].ID < e.report.Symbols[j].ID })
 	sort.Slice(e.report.Findings, func(i, j int) bool { return e.report.Findings[i].Symbol < e.report.Findings[j].Symbol })
 	e.report.Edges = unique(e.report.Edges)

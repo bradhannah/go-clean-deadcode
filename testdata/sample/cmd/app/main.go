@@ -13,5 +13,6 @@ func main() {
 	lib.Digest()
 	lib.Boxed()
 	lib.Distinct()
+	lib.PrintReceipt()
 	lib.Left()
 }

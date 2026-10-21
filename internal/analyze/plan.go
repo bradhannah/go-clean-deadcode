@@ -15,8 +15,8 @@ type planGraph struct {
 	prodLive   map[string]bool
 	testLive   map[string]bool
 	testEdges  map[string][]string
-	references map[string]map[string]bool // test -> declarations it references directly
-	referrers  map[string][]string        // declaration -> tests that reference it directly
+	references map[string]map[string]bool // test-side code -> declarations it references directly
+	referrers  map[string][]string        // declaration -> test-side code that references it directly
 }
 
 func newPlanGraph(r *report.Report) *planGraph {
@@ -35,9 +35,11 @@ func newPlanGraph(r *report.Report) *planGraph {
 			g.testEdges[edge.Caller] = append(g.testEdges[edge.Caller], edge.Callee)
 		}
 	}
+	// Test-side code is a registered test or a declaration in a test file or test
+	// support: a helper's reference matters as much as a test's.
 	for _, ref := range r.References {
 		from := g.symbols[ref.From]
-		if from == nil || !from.RegisteredTest || g.symbols[ref.Symbol] == nil {
+		if from == nil || !from.RegisteredTest && !from.TestFile && !from.TestSupport || g.symbols[ref.Symbol] == nil {
 			continue
 		}
 		if g.references[ref.From] == nil {
@@ -70,9 +72,13 @@ func (g *planGraph) required(id string) bool {
 	return false
 }
 
-// dedicated reports whether a surviving test references production code only
-// where that code is removed, so the test exists for removed code alone.
+// dedicated reports whether a surviving registered test references production
+// code only where that code is removed, so the test exists for removed code
+// alone. Helpers are not removed this way: surviving tests may call them.
 func (g *planGraph) dedicated(test string, removed map[string]int) bool {
+	if !g.symbols[test].RegisteredTest {
+		return false
+	}
 	production := 0
 	for id := range g.references[test] {
 		if g.testHelper(id) {
@@ -191,13 +197,14 @@ func (e *engine) exposedDeclarations(g *planGraph, reached map[string]bool, remo
 	}
 	live := e.liveDeclarations(seeds, removed, e.significant)
 	wasLive := func(id string) bool { return g.prodLive[id] || g.testLive[id] }
-	liveGroups := e.liveEnumGroups(func(id string) bool { return live[id] })
+	inProduction := func(id string) bool { _, gone := removed[id]; return live[id] && g.prodLive[id] && !gone }
+	liveGroups := e.liveEnumGroups(inProduction)
 	var exposed []string
 	for id := range e.decl.decls {
 		if _, gone := removed[id]; gone || live[id] || !wasLive(id) {
 			continue
 		}
-		if kept, _ := e.keptDeclaration(id, e.significant, liveGroups, func(id string) bool { return live[id] }); !kept {
+		if kept, _ := e.keptDeclaration(id, e.significant, liveGroups, func(id string) bool { return live[id] }, inProduction); !kept {
 			exposed = append(exposed, id)
 		}
 	}

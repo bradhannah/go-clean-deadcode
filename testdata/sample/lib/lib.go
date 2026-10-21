@@ -1,6 +1,9 @@
 package lib
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"fmt"
+)
 
 func Live()         {}
 func Utility()      {}
@@ -164,3 +167,24 @@ func HeaderSize() int { return binary.Size(header{}) }
 
 // testOnlyKind is used only by tests.
 type testOnlyKind struct{}
+
+// Receipt reaches fmt, so reachability keeps its exported methods for
+// reflection although nothing calls Total, or the helper only Total calls.
+type Receipt struct{ amount int }
+
+func (r Receipt) Total() int { return double(r.amount) }
+
+func double(n int) int { return n * 2 }
+
+func PrintReceipt() string { return fmt.Sprint(Receipt{amount: 1}) }
+
+// Preset is an enum only tests use, so its values go with it.
+type Preset int
+
+const (
+	PresetMorning Preset = iota
+	PresetNoon
+)
+
+// Retired is reached only by a helper in another package's tests.
+func Retired() {}

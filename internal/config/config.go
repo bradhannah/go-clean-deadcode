@@ -18,6 +18,18 @@ type Config struct {
 	Configurations  []Configuration `json:"configurations"`
 	ExcludedModules []Exclusion     `json:"excluded_modules,omitempty"`
 	Exceptions      []Exception     `json:"exceptions,omitempty"`
+	// ReflectionReviews record that an entry into reflective method lookup
+	// never sees this module's types.
+	ReflectionReviews []ReflectionReview `json:"reflection_reviews,omitempty"`
+}
+
+// ReflectionReview is an owner's review of one reflective method lookup entry.
+type ReflectionReview struct {
+	ID          string `json:"id"`
+	Entry       string `json:"entry"`
+	Reason      string `json:"reason"`
+	ApprovedBy  string `json:"approved_by"`
+	ReviewAfter string `json:"review_after"`
 }
 
 type Module struct {
@@ -156,6 +168,13 @@ func (c Config) Validate() error {
 		if !slices.Contains([]string{"unreachable", "test_only", "unused_test_helper", "never_assigned"}, x.Category) {
 			return fmt.Errorf("invalid exception category %q", x.Category)
 		}
+	}
+	for _, r := range c.ReflectionReviews {
+		if r.ID == "" || seen[r.ID] || r.Entry == "" || strings.TrimSpace(r.Reason) == "" ||
+			strings.TrimSpace(r.ApprovedBy) == "" || r.ReviewAfter == "" {
+			return fmt.Errorf("reflection reviews require unique id, entry, reason, approved_by and review_after")
+		}
+		seen[r.ID] = true
 	}
 	return nil
 }
