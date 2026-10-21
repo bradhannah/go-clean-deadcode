@@ -127,6 +127,15 @@
         "id": {
           "type": "string"
         },
+        "reads": {
+          "items": {
+            "$ref": "#/$defs/Location"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "scopes": {
           "items": {
             "type": "string"
@@ -230,6 +239,26 @@
       ],
       "type": "object"
     },
+    "Note": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "symbol",
+        "kind",
+        "message"
+      ],
+      "type": "object"
+    },
     "Obligation": {
       "additionalProperties": false,
       "properties": {
@@ -257,6 +286,9 @@
     "Plan": {
       "additionalProperties": false,
       "properties": {
+        "declarations": {
+          "type": "integer"
+        },
         "functions": {
           "type": "integer"
         },
@@ -279,6 +311,7 @@
       "required": [
         "waves",
         "functions",
+        "declarations",
         "tests",
         "lines"
       ],
@@ -412,6 +445,15 @@
         "mode": {
           "type": "string"
         },
+        "notes": {
+          "items": {
+            "$ref": "#/$defs/Note"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "plan": {
           "$ref": "#/$defs/Plan"
         },
@@ -467,6 +509,7 @@
         "diagnostics",
         "summary",
         "plan",
+        "notes",
         "metrics",
         "limitations"
       ],
@@ -628,6 +671,12 @@
         "accepted": {
           "type": "integer"
         },
+        "never_assigned": {
+          "type": "integer"
+        },
+        "notes": {
+          "type": "integer"
+        },
         "required_methods": {
           "type": "integer"
         },
@@ -662,7 +711,9 @@
         "accepted",
         "stale_exceptions",
         "structural_methods",
-        "required_methods"
+        "required_methods",
+        "never_assigned",
+        "notes"
       ],
       "type": "object"
     },
@@ -749,6 +800,9 @@
     "Wave": {
       "additionalProperties": false,
       "properties": {
+        "declarations": {
+          "type": "integer"
+        },
         "functions": {
           "type": "integer"
         },
@@ -787,6 +841,7 @@
         "number",
         "removals",
         "functions",
+        "declarations",
         "test_helpers",
         "tests",
         "lines",

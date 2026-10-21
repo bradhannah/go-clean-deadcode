@@ -2,7 +2,7 @@
 
 An exception records an actual reason to retain a particular finding, not a way to
 obtain a desired exit status. Match exact symbol and category (`unreachable`,
-`test_only`, or `unused_test_helper`). Required fields:
+`test_only`, `unused_test_helper` or `never_assigned`). Required fields:
 
 - `id`: unique human-readable record ID.
 - `symbol`: exact report symbol ID.

@@ -95,6 +95,11 @@ formatter to clear whitespace and import artifacts, and compare test coverage
 with the pre-change commit: a live function that lost coverage means a test of
 live behaviour was weakened.
 
+For a `never_assigned` field, read each listed read: the branch it guards can
+never run, so remove the field together with that branch, or add the missing
+assignment if the behaviour is wanted (ask when intent is unclear). Report
+`notes` such as unused enum values for review; do not remove them unprompted.
+
 Repeat analysis after changes, including after removing a test/root. Stop and
 report blocked decisions when there is no progress or scope is incomplete. Do not
 weaken analysis or broaden exceptions to force a pass. This skill grants no Git

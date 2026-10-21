@@ -349,3 +349,54 @@ func TestRemovalPlanFollowsTheCascade(t *testing.T) {
 		t.Errorf("line counts missing: %+v", r.Plan)
 	}
 }
+
+func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
+	root, c := fixture(t)
+	r := Run(context.Background(), Options{Root: root, Config: c})
+	if !r.Complete {
+		t.Fatalf("incomplete: %+v", r.Diagnostics)
+	}
+	found := findingsOf(r)
+	for name, want := range map[string]string{
+		"lib.deadConfig": "unreachable", "lib.deadLimit": "unreachable", "lib.deadTable": "unreachable",
+		"lib.settings.unused": "unreachable", "lib.settings.enabled": "never_assigned", "lib.pair.right": "unreachable",
+		"lib.testOnlyKind": "test_only", "lib.unusedFixture": "unused_test_helper",
+	} {
+		if got := found[name]; got != want {
+			t.Errorf("%s: got %q want %q", name, got, want)
+		}
+	}
+	for _, kept := range []string{"lib.Shape", "lib.Circle", "lib.Square", "lib.settings", "lib.settings.name",
+		"lib.settings.Exported", "lib.settings.tagged", "lib.header.spare", "lib.header.magic", "lib.registry", "lib.digest.sum", "lib.box.value", "lib.box.spare", "lib.instance.id",
+		"lib.deadConfig.size", "lib.finisher"} {
+		if got := found[kept]; got != "" {
+			t.Errorf("%s must not be a finding; got %q", kept, got)
+		}
+	}
+	notes := map[string]string{}
+	for _, n := range r.Notes {
+		notes[strings.TrimPrefix(n.Symbol, "example.com/sample/")] = n.Kind
+	}
+	if notes["lib.Square"] != "unused_enum_value" || notes["lib.instance.id"] != "size_guard_field" ||
+		notes["lib.box.spare"] != "size_guard_field" || len(r.Notes) != 3 {
+		t.Errorf("enum note missing or extra: %v", r.Notes)
+	}
+	for _, f := range r.Findings {
+		if strings.HasSuffix(f.Symbol, "settings.enabled") && len(f.Reads) != 1 {
+			t.Errorf("never-assigned read locations: %+v", f.Reads)
+		}
+	}
+	wave := map[string]int{}
+	for _, w := range r.Plan.Waves {
+		for _, x := range w.Removals {
+			wave[strings.TrimPrefix(x.Symbol, "example.com/sample/")] = w.Number
+		}
+	}
+	if wave["lib.deadConfig"] != 1 || wave["lib.setupState"] != 2 || wave["lib.settings.enabled"] != 0 || wave["lib.Square"] != 0 {
+		t.Errorf("declaration waves: deadConfig=%d setupState=%d enabled=%d Square=%d",
+			wave["lib.deadConfig"], wave["lib.setupState"], wave["lib.settings.enabled"], wave["lib.Square"])
+	}
+	if r.Plan.Declarations == 0 {
+		t.Errorf("plan counts no declarations: %+v", r.Plan)
+	}
+}

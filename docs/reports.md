@@ -29,18 +29,24 @@ Structural validation is not semantic acceptance. A consumer should:
 - `groups`: recursive strongly connected components. Member identifiers refer
   to source symbols. These are dependency groups, not deletion transactions.
 - `findings`: stable category/symbol identity, analyzed scopes, unresolved or
-  accepted disposition, and any matching exception ID.
+  accepted disposition, and any matching exception ID. A `never_assigned`
+  finding lists the live `reads` of its field.
+- `notes`: review information that is never a finding: an `unused_enum_value`
+  is an unused value of a constant set otherwise in use, and a
+  `size_guard_field` is an unused field kept because it gives its struct a size.
 - `exceptions`: reasons, declared approval, review dates and match status.
 - `diagnostics`: scope/configuration/load errors and explicit exclusions.
 - `plan`: a simulated removal of every unresolved finding, in waves. Wave 1 is
   the findings plus `dedicated_test` removals: tests whose only production
   references are removed. Each later wave holds what the earlier removals
   `exposed`: code that only removed code reached. Each wave counts functions,
-  test helpers, tests and declaration lines, and lists `tests_needing_edits`:
+  declarations (types, fields, constants and variables), test helpers, tests and
+  declaration lines, and lists `tests_needing_edits`:
   surviving tests that directly reference a removal. A removal records the tests
   that reference it (`referenced_by`, at most 20) and `other_packages` when a
   referencing test is in another package, which usually means shared test
-  support. The plan edits nothing and assumes every finding is removed.
+  support. The plan edits nothing and assumes every finding is removed, except
+  `never_assigned` fields, which it leaves for review.
 - `metrics`: this invocation's measured phase/total times and cache-hit status.
 - `limitations`: precision boundaries that consumers must preserve.
 

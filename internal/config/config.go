@@ -153,7 +153,7 @@ func (c Config) Validate() error {
 			return fmt.Errorf("exceptions require unique id, exact symbol, reason, approved_by, review_after and 64-character fingerprint")
 		}
 		seen[x.ID] = true
-		if x.Category != "unreachable" && x.Category != "test_only" && x.Category != "unused_test_helper" {
+		if !slices.Contains([]string{"unreachable", "test_only", "unused_test_helper", "never_assigned"}, x.Category) {
 			return fmt.Errorf("invalid exception category %q", x.Category)
 		}
 	}

@@ -29,13 +29,18 @@ func Text(w io.Writer, r *Report, only string) error {
 	fmt.Fprintf(&b, "\nSummary\n  Unreachable functions: %d\n  Non-test functions reachable only in tests: %d\n  Unreachable test declarations: %d\n  Unresolved findings: %d\n  Accepted exceptions: %d\n  Stale exceptions: %d\n", r.Summary.Unreachable, r.Summary.TestOnly, r.Summary.UnusedTestHelpers, r.Summary.Unresolved, r.Summary.Accepted, r.Summary.StaleExceptions)
 	fmt.Fprintf(&b, "  Structural interface-marker methods: %d\n", r.Summary.StructuralMethods)
 	fmt.Fprintf(&b, "  Methods required by asserted interfaces: %d\n", r.Summary.RequiredMethods)
+	fmt.Fprintf(&b, "  Never-assigned fields: %d\n  Notes: %d\n", r.Summary.NeverAssigned, r.Summary.Notes)
+	for _, n := range r.Notes {
+		fmt.Fprintf(&b, "  Note %s: %s\n", n.Symbol, n.Message)
+	}
 	if len(r.Plan.Waves) > 0 {
 		fmt.Fprintf(&b, "\nRemoval plan (simulated; nothing is edited)\n")
 		for _, w := range r.Plan.Waves {
-			fmt.Fprintf(&b, "  Wave %d: %d functions, %d test helpers, %d tests, %d lines; %d surviving tests need edits\n",
-				w.Number, w.Functions, w.TestHelpers, w.Tests, w.Lines, len(w.TestsNeedingEdits))
+			fmt.Fprintf(&b, "  Wave %d: %d functions, %d declarations, %d test helpers, %d tests, %d lines; %d surviving tests need edits\n",
+				w.Number, w.Functions, w.Declarations, w.TestHelpers, w.Tests, w.Lines, len(w.TestsNeedingEdits))
 		}
-		fmt.Fprintf(&b, "  Total: %d functions and test helpers, %d tests, %d lines\n", r.Plan.Functions, r.Plan.Tests, r.Plan.Lines)
+		fmt.Fprintf(&b, "  Total: %d functions and test helpers, %d declarations, %d tests, %d lines\n",
+			r.Plan.Functions, r.Plan.Declarations, r.Plan.Tests, r.Plan.Lines)
 	}
 	byID := map[string]Symbol{}
 	for _, s := range r.Symbols {
@@ -49,6 +54,9 @@ func Text(w io.Writer, r *Report, only string) error {
 		fmt.Fprintf(&b, "\n%s  %s [%s]\n  Symbol: %s\n", f.ID, strings.ToUpper(f.Category), f.Status, s.ID)
 		for _, l := range s.Locations {
 			fmt.Fprintf(&b, "  Declaration: %s:%d:%d\n", l.File, l.Line, l.Column)
+		}
+		for _, l := range f.Reads {
+			fmt.Fprintf(&b, "  Read (always the zero value): %s:%d:%d\n", l.File, l.Line, l.Column)
 		}
 		fmt.Fprintf(&b, "  Test file: %t  Generated: %t  Registered test entry: %t\n  Fingerprint: %s\n", s.TestFile, s.Generated, s.RegisteredTest, s.Fingerprint)
 		for _, st := range s.States {
