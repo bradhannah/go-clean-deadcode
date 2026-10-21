@@ -385,12 +385,16 @@
         "entry": {
           "type": "string"
         },
+        "kind": {
+          "type": "string"
+        },
         "via": {
           "type": "string"
         }
       },
       "required": [
         "analysis",
+        "kind",
         "entry",
         "via"
       ],

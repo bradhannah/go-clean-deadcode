@@ -69,8 +69,9 @@ For each coherent candidate group:
   this repository does not establish no downstream consumers.
 - Treat marker methods as compile-time structure. Other uncalled methods may also
   be required by interfaces, even without an explicit obligation record.
-- For `reflection_retained` notes, read each scope's `reflective_lookups`. Read
-  every entry's source to see what it passes to the lookup, and propose a
+- For `reflection_retained` notes, read each scope's `reflective_lookups` (method
+  lookups, and field access for notes on fields). Read every entry's source to
+  see what it passes to reflection, and propose a
   reflection review to the owner only when no module value can reach it. Never
   record the approval yourself. `interface_conformance` notes need a decision on
   the interface, not a method removal.

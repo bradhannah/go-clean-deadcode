@@ -41,8 +41,10 @@ type engine struct {
 	progress func(string)
 	bodies   map[string]map[string]bool
 	decl     *declarationEvidence
-	// significant holds struct types whose field layout must not change.
+	// significant holds struct types whose field layout must not change, and
+	// layoutOnly those of them that no reflection review could release.
 	significant map[string]bool
+	layoutOnly  map[string]bool
 	// sizeGuarded holds struct types whose only sized fields are removable.
 	sizeGuarded map[string]bool
 	// unexplained holds, per scope and analysis, reachable symbols that no call
@@ -52,7 +54,15 @@ type engine struct {
 	lookups map[lookupKey]map[report.ReflectiveLookup]bool
 	// lookupPackages holds the package of each standard-library lookup caller.
 	lookupPackages map[lookupKey]map[string]string
-	conform        *conformanceEvidence
+	// fieldEntries holds, per scope, the unreviewed entries into reflective
+	// field access in production.
+	fieldEntries map[string][]string
+	// runtimeStructs holds, per scope, struct types production can reflect on.
+	runtimeStructs map[string]map[string]bool
+	// reflected holds the struct types unreviewed field access can see, with
+	// its entries.
+	reflected map[string][]string
+	conform   *conformanceEvidence
 }
 
 func Run(ctx context.Context, opt Options) (result *report.Report) {
@@ -68,6 +78,7 @@ func Run(ctx context.Context, opt Options) (result *report.Report) {
 	e.unexplained = map[lookupKey]map[string]bool{}
 	e.lookups = map[lookupKey]map[report.ReflectiveLookup]bool{}
 	e.lookupPackages = map[lookupKey]map[string]string{}
+	e.runtimeStructs = map[string]map[string]bool{}
 	e.conform = newConformanceEvidence()
 	defer func() {
 		if p := recover(); p != nil {
@@ -822,6 +833,9 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 		}
 	}
 	e.recordReflectiveLookup(scope, kind, res.CallGraph)
+	if kind == "production" {
+		e.recordRuntimeStructs(scope, res)
+	}
 	// Test files convert their fakes to interfaces too.
 	e.recordConversions(lookupKey{scope, kind}, prog, res)
 	e.resolveInstances(lookupKey{scope, kind})

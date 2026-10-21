@@ -19,8 +19,9 @@ Structural validation is not semantic acceptance. A consumer should:
 
 - `scopes`: module/build selections, discovered/classified executable packages,
   test inclusion and nested modules, and `reflective_lookups`: reachable
-  reflective method lookups per analysis, with the `via` caller and the `entry`
-  a reflection review names.
+  reflective method lookups per analysis and production field access outside
+  the standard library (`kind` `method` or `field`), with the `via` caller and
+  the `entry` a reflection review names.
 - `reflection_reviews`: configured reviews with `matched`, `unmatched` or
   `expired` status; the latter two count as stale exceptions.
 - `symbols`: qualified identities, declaration locations, normalized declaration
@@ -39,7 +40,9 @@ Structural validation is not semantic acceptance. A consumer should:
   is an unused value of a constant set production otherwise uses, and a
   `size_guard_field` is an unused field kept because it gives its struct a size,
   a `reflection_retained` function or method is kept only because reflection
-  could call it and an entry into reflective method lookup is unreviewed, and
+  could call it and an entry into reflective method lookup is unreviewed (or a
+  field is unused or never written, but unreviewed reflective field access can
+  see its struct), and
   an `interface_conformance` method has no call path but reachable code needs it
   at compile time, by converting its type to an interface or instantiating a
   generic with it.

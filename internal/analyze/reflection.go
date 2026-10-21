@@ -1,6 +1,8 @@
 package analyze
 
 import (
+	"cmp"
+	"go/types"
 	"slices"
 	"sort"
 	"strings"
@@ -9,6 +11,7 @@ import (
 	"github.com/bradhannah/go-clean-deadcode/internal/config"
 	"github.com/bradhannah/go-clean-deadcode/internal/report"
 	"golang.org/x/tools/go/callgraph"
+	"golang.org/x/tools/go/callgraph/rta"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -19,6 +22,15 @@ import (
 // When every lookup in an analysis is reviewed, or there is none, code kept
 // only by that rule is unreachable there, as the Go linker would treat it.
 
+//
+// Reflection also reaches struct fields. The standard library's field access
+// (formatting, encoders, comparison) never depends on a field source leaves
+// unused or unwritten, and the binary encoding that lays every field out is
+// covered where a struct is passed to it. Other code, such as UI or scripting
+// bindings, can read any field of a type it is given and set unexported ones
+// through unsafe. Until each such entry is reviewed, the fields of production
+// runtime types are kept and their unused or unwritten ones are notes.
+
 // reflectiveLookup names the reflect functions that find a method by index or
 // name at run time.
 var reflectiveLookup = map[string]bool{
@@ -26,9 +38,34 @@ var reflectiveLookup = map[string]bool{
 	"(*reflect.rtype).Method": true, "(*reflect.rtype).MethodByName": true,
 }
 
+// reflectiveFieldAccess names the reflect functions that reach a struct field
+// by index or name at run time.
+var reflectiveFieldAccess = map[string]bool{
+	"(reflect.Value).Field": true, "(reflect.Value).FieldByIndex": true, "(reflect.Value).FieldByIndexErr": true,
+	"(reflect.Value).FieldByName": true, "(reflect.Value).FieldByNameFunc": true,
+	"(*reflect.rtype).Field": true, "(*reflect.rtype).FieldByIndex": true, "(*reflect.rtype).FieldByName": true,
+	"(*reflect.rtype).FieldByNameFunc": true, "reflect.VisibleFields": true,
+}
+
 type lookupKey struct{ scope, analysis string }
 
+// functionName names an instantiation by its generic function, so that one
+// review covers every instantiation.
+func functionName(fn *ssa.Function) string {
+	if origin := fn.Origin(); origin != nil {
+		return origin.String()
+	}
+	return fn.String()
+}
+
+// wrapper reports compiler-generated code that only forwards a call. An
+// instantiation is synthetic too, but its body is the generic function's.
+func wrapper(fn *ssa.Function) bool { return fn.Synthetic != "" && fn.Origin() == nil }
+
 func standardLibrary(fn *ssa.Function) bool {
+	if fn.Pkg == nil && fn.Origin() != nil {
+		fn = fn.Origin()
+	}
 	if fn.Pkg == nil {
 		return false
 	}
@@ -36,19 +73,46 @@ func standardLibrary(fn *ssa.Function) bool {
 	return !strings.Contains(strings.Split(path, "/")[0], ".")
 }
 
-// recordReflectiveLookup records each reachable lookup: the function outside
-// package reflect that calls it (through compiler-generated wrappers), and the
-// entry, the first function outside the standard library on a call path to it.
+// recordReflectiveLookup records each reachable method lookup and, in
+// production, each field access outside the standard library: the function
+// outside package reflect that calls it (through compiler-generated wrappers),
+// and the entry, the first function outside the standard library on a call path
+// to it.
 func (e *engine) recordReflectiveLookup(scope, analysis string, g *callgraph.Graph) {
 	key := lookupKey{scope, analysis}
 	if e.lookups[key] == nil {
 		e.lookups[key] = map[report.ReflectiveLookup]bool{}
 	}
+	for via := range reflectCallers(g, reflectiveLookup) {
+		for _, entry := range lookupEntries(via) {
+			e.lookups[key][report.ReflectiveLookup{Analysis: analysis, Kind: "method", Entry: entry, Via: functionName(via.Func)}] = true
+		}
+		if standardLibrary(via.Func) {
+			if e.lookupPackages[key] == nil {
+				e.lookupPackages[key] = map[string]string{}
+			}
+			e.lookupPackages[key][functionName(via.Func)] = via.Func.Pkg.Pkg.Path()
+		}
+	}
+	if analysis != "production" {
+		return
+	}
+	for via := range reflectCallers(g, reflectiveFieldAccess) {
+		if !standardLibrary(via.Func) {
+			name := functionName(via.Func)
+			e.lookups[key][report.ReflectiveLookup{Analysis: analysis, Kind: "field", Entry: name, Via: name}] = true
+		}
+	}
+}
+
+// reflectCallers returns the callers outside package reflect of the named
+// reflect functions, looking through compiler-generated wrappers.
+func reflectCallers(g *callgraph.Graph, targets map[string]bool) map[*callgraph.Node]bool {
 	callers := map[*callgraph.Node]bool{}
 	seen := map[*callgraph.Node]bool{}
 	var queue []*callgraph.Node
 	for fn, node := range g.Nodes {
-		if fn != nil && reflectiveLookup[fn.String()] {
+		if fn != nil && targets[fn.String()] {
 			seen[node] = true
 			queue = append(queue, node)
 		}
@@ -63,27 +127,18 @@ func (e *engine) recordReflectiveLookup(scope, analysis string, g *callgraph.Gra
 			}
 			seen[caller] = true
 			switch fn := caller.Func; {
-			case fn.Synthetic != "":
+			case wrapper(fn):
 				queue = append(queue, caller)
 			case fn.Pkg != nil && fn.Pkg.Pkg.Path() == "reflect":
 				// Reflect reaches its own lookups only for a method value that
-				// a lookup outside reflect already produced.
+				// a lookup outside reflect already produced, and its own field
+				// access (comparison, zero checks) never depends on an unused field.
 			default:
 				callers[caller] = true
 			}
 		}
 	}
-	for via := range callers {
-		for _, entry := range lookupEntries(via) {
-			e.lookups[key][report.ReflectiveLookup{Analysis: analysis, Entry: entry, Via: via.Func.String()}] = true
-		}
-		if standardLibrary(via.Func) {
-			if e.lookupPackages[key] == nil {
-				e.lookupPackages[key] = map[string]string{}
-			}
-			e.lookupPackages[key][via.Func.String()] = via.Func.Pkg.Pkg.Path()
-		}
-	}
+	return callers
 }
 
 // lookupEntries walks static callers of a standard-library lookup caller to
@@ -95,7 +150,7 @@ func (e *engine) recordReflectiveLookup(scope, analysis string, g *callgraph.Gra
 // entry.
 func lookupEntries(via *callgraph.Node) []string {
 	if !standardLibrary(via.Func) {
-		return []string{via.Func.String()}
+		return []string{functionName(via.Func)}
 	}
 	entries := map[string]bool{}
 	seen := map[*callgraph.Node]bool{via: true}
@@ -109,15 +164,15 @@ func lookupEntries(via *callgraph.Node) []string {
 				continue
 			}
 			seen[caller] = true
-			if caller.Func.Synthetic != "" || standardLibrary(caller.Func) {
+			if wrapper(caller.Func) || standardLibrary(caller.Func) {
 				queue = append(queue, caller)
 			} else {
-				entries[caller.Func.String()] = true
+				entries[functionName(caller.Func)] = true
 			}
 		}
 	}
 	if len(entries) == 0 {
-		return []string{via.Func.String()}
+		return []string{functionName(via.Func)}
 	}
 	out := make([]string, 0, len(entries))
 	for entry := range entries {
@@ -139,7 +194,7 @@ func (e *engine) reflectionReviews(c config.Config) map[lookupKey]bool {
 			}
 			for via, pkg := range vias {
 				if strings.HasPrefix(ref.Symbol, pkg+".") {
-					e.lookups[key][report.ReflectiveLookup{Analysis: key.analysis, Entry: ref.From, Via: via}] = true
+					e.lookups[key][report.ReflectiveLookup{Analysis: key.analysis, Kind: "method", Entry: ref.From, Via: via}] = true
 				}
 			}
 		}
@@ -175,6 +230,7 @@ func (e *engine) reflectionReviews(c config.Config) map[lookupKey]bool {
 		e.report.ReflectionReviews = append(e.report.ReflectionReviews, result)
 	}
 	reviewed := map[lookupKey]bool{}
+	e.fieldEntries = map[string][]string{}
 	for i := range e.report.Scopes {
 		s := &e.report.Scopes[i]
 		s.ReflectiveLookups = []report.ReflectiveLookup{}
@@ -183,16 +239,90 @@ func (e *engine) reflectionReviews(c config.Config) map[lookupKey]bool {
 			all := true
 			for _, row := range byScope[key] {
 				s.ReflectiveLookups = append(s.ReflectiveLookups, row)
-				all = all && current[row.Entry] && matched[row.Entry]
+				ok := current[row.Entry] && matched[row.Entry]
+				switch {
+				case row.Kind == "method":
+					all = all && ok
+				case !ok && !slices.Contains(e.fieldEntries[s.ID], row.Entry):
+					e.fieldEntries[s.ID] = append(e.fieldEntries[s.ID], row.Entry)
+				}
 			}
 			reviewed[key] = all
 		}
+		sort.Strings(e.fieldEntries[s.ID])
 		sort.Slice(s.ReflectiveLookups, func(a, b int) bool {
 			x, y := s.ReflectiveLookups[a], s.ReflectiveLookups[b]
-			return x.Analysis+x.Entry+x.Via < y.Analysis+y.Entry+y.Via
+			return cmp.Or(strings.Compare(x.Analysis, y.Analysis), strings.Compare(x.Kind, y.Kind),
+				strings.Compare(x.Entry, y.Entry), strings.Compare(x.Via, y.Via)) < 0
 		})
 	}
 	return reviewed
+}
+
+// recordRuntimeStructs records the module struct types that production code
+// can hand to reflection.
+func (e *engine) recordRuntimeStructs(scope string, res *rta.Result) {
+	if e.runtimeStructs[scope] == nil {
+		e.runtimeStructs[scope] = map[string]bool{}
+	}
+	res.RuntimeTypes.Iterate(func(t types.Type, _ any) {
+		if id := namedStruct(t); id != "" {
+			e.runtimeStructs[scope][id] = true
+		}
+	})
+}
+
+// reflectedStructs returns the struct types that unreviewed field access in
+// production can see, with its entries.
+func (e *engine) reflectedStructs() map[string][]string {
+	out := map[string][]string{}
+	for scope, entries := range e.fieldEntries {
+		for id := range e.runtimeStructs[scope] {
+			for _, entry := range entries {
+				if !slices.Contains(out[id], entry) {
+					out[id] = append(out[id], entry)
+				}
+			}
+		}
+	}
+	for id := range out {
+		sort.Strings(out[id])
+	}
+	return out
+}
+
+// reflectionFieldNotes lists the fields that would be findings but for
+// unreviewed reflective field access: unused ones, and ones source reads but
+// never writes.
+func (e *engine) reflectionFieldNotes(layoutOnly map[string]bool, live func(string) bool) []report.Note {
+	used := map[string]bool{}
+	for from, uses := range e.decl.uses {
+		if live(from) {
+			for to := range uses {
+				used[to] = true
+			}
+		}
+	}
+	var notes []report.Note
+	for id, d := range e.decl.decls {
+		entries := e.reflected[d.owner]
+		if d.kind != "field" || len(entries) == 0 || !live(d.owner) || !e.fieldRuleRemovable(d, layoutOnly) {
+			continue
+		}
+		var what string
+		switch {
+		case !used[id]:
+			what = "Unused field"
+		case !e.decl.writes[id]:
+			what = "Field that source reads but never writes"
+		default:
+			continue
+		}
+		notes = append(notes, report.Note{Symbol: id, Kind: "reflection_retained", Message: what + " of a type that " +
+			"reflection can see. Unreviewed reflective field access can read any field and set unexported ones " +
+			"through unsafe: " + strings.Join(entries, ", ") + ". Review whether it can see this type."})
+	}
+	return notes
 }
 
 // retainedByReflection returns, per analysis, the functions and methods that
@@ -244,6 +374,7 @@ func (e *engine) reachableIn(id string, key lookupKey) bool {
 // each reviewed analysis, and returns the notes for what stays.
 func (e *engine) applyReflectionReviews(c config.Config) []report.Note {
 	reviewed := e.reflectionReviews(c)
+	e.reflected = e.reflectedStructs()
 	keys := make([]lookupKey, 0, len(e.unexplained))
 	for key := range e.unexplained {
 		keys = append(keys, key)

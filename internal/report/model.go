@@ -95,6 +95,7 @@ type State struct {
 // library on a call path to Via, which is what a review considers.
 type ReflectiveLookup struct {
 	Analysis string `json:"analysis"`
+	Kind     string `json:"kind"`
 	Entry    string `json:"entry"`
 	Via      string `json:"via"`
 }

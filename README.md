@@ -72,11 +72,12 @@ block or typed enum that production otherwise uses is reported as a note for rev
 not a finding.
 
 Reachability keeps exported methods of runtime types because reflection could
-call them. The report lists which code performs reflective method lookup; once
-an owner reviews each entry as never seeing the module's values (see
-[configuration](docs/configuration.md#reflection-reviews)), code kept only by
-that rule is classified like any other, and until then it is reported as
-`reflection_retained` notes.
+call them. The report lists which code performs reflective method lookup, and
+which code outside the standard library reaches struct fields by reflection;
+once an owner reviews each entry as never seeing the module's values (see
+[configuration](docs/configuration.md#reflection-reviews)), code and fields kept
+only by that rule are classified like any other, and until then they are
+reported as `reflection_retained` notes.
 
 These are review categories, not deletion instructions. Test-only code can be
 legitimate infrastructure or an external API. Two tests reaching the same code do

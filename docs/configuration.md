@@ -88,10 +88,15 @@ migrated instead of discarded.
 Reachability keeps every exported method of a runtime type, because reflection
 could call it. Only reflect's method lookups can: `reflect.Value.Method` and
 `MethodByName`, and the same methods of `reflect.Type`. Each scope reports the
-reachable lookups in `reflective_lookups`, per analysis, with `via` (the function
-calling the lookup) and `entry` (the first function outside the standard library
-on a static call path to it, or module code that refers to the lookup's
-package). An analysis with no lookup needs no review.
+reachable lookups in `reflective_lookups`, per analysis, with `kind: method`,
+`via` (the function calling the lookup) and `entry` (the first function outside
+the standard library on a static call path to it, or module code that refers to
+the lookup's package). An analysis with no lookup needs no review.
+
+Rows with `kind: field` are production code outside the standard library that
+reaches struct fields by reflection. Until each is reviewed, struct types
+production can hand to reflection keep their fields, and the unused or
+never-written ones are `reflection_retained` notes instead of findings.
 
 A reflection review records an owner's finding that one entry never passes this
 module's values to the lookup:
@@ -106,9 +111,10 @@ module's values to the lookup:
 }
 ```
 
-When every entry of an analysis has a matched, current review, code that only
-reflection's exported-method rule keeps is unreachable in that analysis and is
-classified normally. Read the entry's source before approving: what it passes to
+When every method entry of an analysis has a matched, current review, code that
+only reflection's exported-method rule keeps is unreachable in that analysis and
+is classified normally. When every field entry of a scope is reviewed, its
+fields are classified normally. A review names an entry, so it covers both kinds. Read the entry's source before approving: what it passes to
 the lookup, and whether module values can reach it, for example through a
 template's data or functions. An unmatched or expired review counts in
 `stale_exceptions`. A dependency upgrade can add entries; an unreviewed entry

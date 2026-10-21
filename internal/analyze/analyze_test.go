@@ -431,8 +431,8 @@ func reflectionFixture(t *testing.T, reviews ...config.ReflectionReview) *report
 // reflectionFindings leaves out the fixture's ordinary dead code.
 func reflectionFindings(r *report.Report) map[string]string {
 	found := findingsOf(r)
-	for _, dead := range []string{"Labeler", "tag", "tag.Label", "unusedLabel"} {
-		delete(found, "example.com/reflection/shop."+dead)
+	for _, dead := range []string{"shop.Labeler", "shop.tag", "shop.tag.Label", "shop.unusedLabel", "panel.plain.spare"} {
+		delete(found, "example.com/reflection/"+dead)
 	}
 	return found
 }
@@ -444,9 +444,17 @@ func reflectionReview(entry string) config.ReflectionReview {
 
 func TestReflectiveLookupKeepsExportedMethodsUntilReviewed(t *testing.T) {
 	r := reflectionFixture(t)
-	want := report.ReflectiveLookup{Analysis: "production", Entry: "example.com/reflection/plugin.Call", Via: "example.com/reflection/plugin.Call"}
-	if lookups := r.Scopes[0].ReflectiveLookups; len(lookups) != 1 || lookups[0] != want {
+	// fmt reads Receipt's fields too, but the standard library never depends on
+	// an unexported field that source leaves unused.
+	want := []report.ReflectiveLookup{
+		{Analysis: "production", Kind: "field", Entry: "example.com/reflection/bind.Register", Via: "example.com/reflection/bind.Register"},
+		{Analysis: "production", Kind: "method", Entry: "example.com/reflection/plugin.Call", Via: "example.com/reflection/plugin.Call"},
+	}
+	if lookups := r.Scopes[0].ReflectiveLookups; !slices.Equal(lookups, want) {
 		t.Fatalf("lookups: %+v", lookups)
+	}
+	if got := findingsOf(r)["example.com/reflection/panel.plain.spare"]; got != "unreachable" {
+		t.Errorf("a struct reflection never sees keeps no unused field; got %q", got)
 	}
 	if found := reflectionFindings(r); len(found) != 0 {
 		t.Errorf("unreviewed reflection must not create findings: %v", found)
@@ -456,7 +464,8 @@ func TestReflectiveLookupKeepsExportedMethodsUntilReviewed(t *testing.T) {
 		notes[strings.TrimPrefix(n.Symbol, "example.com/reflection/")] = n.Kind
 	}
 	if notes["shop.Receipt.Total"] != "reflection_retained" || notes["shop.double"] != "reflection_retained" ||
-		notes["shop.square.Area"] != "" {
+		notes["shop.square.Area"] != "" || notes["panel.Panel.signal"] != "reflection_retained" ||
+		notes["panel.Panel.ready"] != "reflection_retained" || notes["shop.Receipt.amount"] != "" {
 		t.Errorf("notes: %v", notes)
 	}
 }
@@ -490,6 +499,20 @@ func TestReviewedReflectionFindsCodeOnlyItKept(t *testing.T) {
 		if got := found["example.com/reflection/"+dead]; got != "unreachable" {
 			t.Errorf("%s: a requirement only dead code makes must not keep it; got %q", dead, got)
 		}
+	}
+}
+
+func TestReviewedFieldReflectionFindsFields(t *testing.T) {
+	r := reflectionFixture(t, reflectionReview("example.com/reflection/bind.Register"))
+	found := findingsOf(r)
+	for name, want := range map[string]string{"panel.Panel.signal": "unreachable", "panel.Panel.ready": "never_assigned"} {
+		if got := found["example.com/reflection/"+name]; got != want {
+			t.Errorf("%s: got %q want %q", name, got, want)
+		}
+	}
+	// The method lookup is still unreviewed.
+	if got := found["example.com/reflection/shop.Receipt.Total"]; got != "" {
+		t.Errorf("a field review must not review method lookups; got %q", got)
 	}
 }
 

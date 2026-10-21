@@ -471,10 +471,10 @@ func (e *engine) layoutCall(p *packages.Package, call *ast.CallExpr) {
 
 // layoutSignificant closes significance over field types: a struct inside a
 // layout-significant struct is laid out with it.
-func (e *engine) layoutSignificant() map[string]bool {
+func (e *engine) layoutSignificant(seeds map[string]bool) map[string]bool {
 	significant := map[string]bool{}
 	var queue []string
-	for id := range e.decl.significant {
+	for id := range seeds {
 		significant[id] = true
 		queue = append(queue, id)
 	}
@@ -599,7 +599,13 @@ func (e *engine) liveDeclarations(seeds map[string]bool, removed map[string]int,
 // declarationStates marks each inventoried declaration reachable in the scopes
 // and analyses whose functions or exported API use it.
 func (e *engine) declarationStates() map[string]bool {
-	significant := e.layoutSignificant()
+	// Fields that unreviewed reflection can see are kept like laid-out ones.
+	e.layoutOnly = e.layoutSignificant(e.decl.significant)
+	seeds := maps.Clone(e.decl.significant)
+	for id := range e.reflected {
+		seeds[id] = true
+	}
+	significant := e.layoutSignificant(seeds)
 	// Whether a struct needs its unused fields for its size depends on which
 	// fields live code uses, and what a size guard keeps uses no field.
 	e.sizeGuarded = map[string]bool{}

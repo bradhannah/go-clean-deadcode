@@ -142,6 +142,7 @@ func (e *engine) finalize(c config.Config) {
 	}
 	e.report.Notes = append(e.report.Notes, e.sizeGuardNotes(e.significant, live)...)
 	e.report.Notes = append(e.report.Notes, reflectionNotes...)
+	e.report.Notes = append(e.report.Notes, e.reflectionFieldNotes(e.layoutOnly, live)...)
 	sort.Slice(e.report.Notes, func(i, j int) bool {
 		a, b := e.report.Notes[i], e.report.Notes[j]
 		return a.Symbol < b.Symbol || a.Symbol == b.Symbol && a.Kind < b.Kind

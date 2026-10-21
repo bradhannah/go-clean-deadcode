@@ -26,7 +26,7 @@ func Text(w io.Writer, r *Report, only string) error {
 			fmt.Fprintf(&b, "  Nested module: %s\n", m)
 		}
 		for _, l := range s.ReflectiveLookups {
-			fmt.Fprintf(&b, "  Reflective method lookup (%s): %s via %s\n", l.Analysis, l.Entry, l.Via)
+			fmt.Fprintf(&b, "  Reflective %s access (%s): %s via %s\n", l.Kind, l.Analysis, l.Entry, l.Via)
 		}
 	}
 	for _, x := range r.ReflectionReviews {

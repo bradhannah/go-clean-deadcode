@@ -60,6 +60,19 @@ reviews, the kept code becomes `reflection_retained` notes. With every entry of
 an analysis reviewed, or no lookup at all, as the Go linker would conclude, the
 kept code is unreachable there and its states carry `reflection_reviewed`.
 Methods a compile-time requirement needs become `interface_conformance` notes.
+A generic function is named by its generic declaration, not its instantiations.
+
+Reflection reaches struct fields too (`Field`, `FieldByIndex`, `FieldByName`,
+`FieldByNameFunc` on `reflect.Value` and `reflect.Type`, and `VisibleFields`).
+The standard library's field access (formatting, the encoders, comparison) never
+depends on a field source leaves unused or unwritten; `encoding/binary`, which
+lays every field out, is covered by the layout rule where a struct is passed to
+it directly, but not through a helper that takes `any`. Production callers outside the standard library are listed as field access
+entries: code such as a UI or scripting binding can read any field of a type it
+is given and set unexported ones through unsafe. Until every such entry of a
+scope is reviewed, the fields of struct types production can hand to reflection
+(its runtime types) are kept, and the unused or never-written ones among them are
+`reflection_retained` notes.
 
 Source references are independently collected from type-resolved AST identifiers,
 including dead callers. A reference does not prove runtime reachability. Direct
