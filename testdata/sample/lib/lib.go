@@ -70,3 +70,7 @@ func RunJob(x any) {
 		f.finish(1)
 	}
 }
+
+// Obsolete is reached only by tests; removing it also removes TestObsolete and
+// then exposes obsoleteSetup, which only TestObsolete called.
+func Obsolete() {}

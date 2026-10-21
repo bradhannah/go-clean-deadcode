@@ -29,3 +29,10 @@ func (fakeJob) finish(int)    {}
 func (fakeJob) label() string { return "fake" }
 
 func TestRunJob(t *testing.T) { RunJob(fakeJob{}); SupportOnly(); testkit.Helper(); t.Helper() }
+
+func obsoleteSetup() {}
+
+func TestObsolete(t *testing.T) { obsoleteSetup(); Obsolete(); t.Helper() }
+
+// TestMixed tests live code but also uses Obsolete, so it survives and needs an edit.
+func TestMixed(t *testing.T) { Live(); Obsolete(); t.Helper() }

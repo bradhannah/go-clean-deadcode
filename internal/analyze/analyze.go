@@ -347,6 +347,17 @@ func apiRoots(prog *ssa.Program, p *ssa.Package) []*ssa.Function {
 	return roots
 }
 
+// owner names the declaration a call belongs to: a closure's calls are its
+// enclosing function's, so removing that function also removes them.
+func (e *engine) owner(index *graphIndex, fn *ssa.Function) string {
+	for f := fn; f != nil; f = f.Parent() {
+		if id := index.name(f); e.symbols[id] != nil {
+			return id
+		}
+	}
+	return index.name(fn)
+}
+
 // assertionObligations records the methods a runtime type needs to satisfy an
 // interface that reachable code checks with a type assertion or type switch.
 // Removing such a method still compiles but silently changes which branch runs.
@@ -576,6 +587,11 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 					e.bodies[id] = map[string]bool{}
 				}
 				e.bodies[id][body.String()] = true
+				start := d.Pos()
+				if d.Doc != nil {
+					start = d.Doc.Pos()
+				}
+				x.Lines = max(x.Lines, p.Fset.Position(d.End()).Line-p.Fset.Position(start).Line+1)
 				loc := e.location(p.Fset, d.Name.Pos())
 				if !slices.Contains(x.Locations, loc) {
 					x.Locations = append(x.Locations, loc)
@@ -731,7 +747,7 @@ func (e *engine) program(ctx context.Context, pkgs []*packages.Package, dir, sco
 	e.log(scope + " " + kind + ": graph edges")
 	for _, node := range res.CallGraph.Nodes {
 		for _, edge := range node.Out {
-			caller, callee := index.name(edge.Caller.Func), index.name(edge.Callee.Func)
+			caller, callee := e.owner(index, edge.Caller.Func), index.name(edge.Callee.Func)
 			if _, ok := e.symbols[caller]; !ok {
 				continue
 			}
