@@ -7,6 +7,7 @@ import (
 	"go/printer"
 	"go/token"
 	"go/types"
+	"maps"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -514,17 +515,19 @@ func (e *engine) fieldRuleRemovable(d *declaration, significant map[string]bool)
 	return !d.exported && !d.tagged && !d.embedded && !significant[d.owner]
 }
 
-// sizeGuards lists structs whose removable fields are all that give them a
-// size. Distinct pointers to a zero-size value may compare equal, so removing
-// those fields could change what identity comparisons of the struct mean.
-func (e *engine) sizeGuards(significant map[string]bool) map[string]bool {
+// sizeGuards lists structs whose fields that would go, the removable ones live
+// code does not use, are all that give them a size. Distinct pointers to a
+// zero-size value may compare equal, so removing those fields could change
+// what identity comparisons of the struct mean.
+func (e *engine) sizeGuards(significant, used map[string]bool) map[string]bool {
 	guarded := map[string]bool{}
 	for owner, st := range e.decl.structs {
 		sized, kept := false, true
 		for i := range st.NumFields() {
 			field := st.Field(i)
-			d := e.decl.decls[e.decl.fields[field]]
-			if field.Name() != "_" && d != nil && e.fieldRuleRemovable(d, significant) {
+			id := e.decl.fields[field]
+			d := e.decl.decls[id]
+			if field.Name() != "_" && d != nil && e.fieldRuleRemovable(d, significant) && !used[id] {
 				sized = sized || !possiblyZeroSize(field.Type())
 			} else if !possiblyZeroSize(field.Type()) {
 				kept = false
@@ -597,24 +600,13 @@ func (e *engine) liveDeclarations(seeds map[string]bool, removed map[string]int,
 // and analyses whose functions or exported API use it.
 func (e *engine) declarationStates() map[string]bool {
 	significant := e.layoutSignificant()
-	e.sizeGuarded = e.sizeGuards(significant)
-	scopes := make([]string, 0, len(e.decl.reachable))
-	for scope := range e.decl.reachable {
-		scopes = append(scopes, scope)
-	}
-	sort.Strings(scopes)
-	for _, scope := range scopes {
-		for analysis, functions := range e.decl.reachable[scope] {
-			seeds := map[string]bool{}
-			for id := range functions {
-				seeds[id] = true
-			}
-			if analysis == "production" {
-				for id := range e.decl.roots[scope] {
-					seeds[id] = true
-				}
-			}
-			for id := range e.liveDeclarations(seeds, nil, significant) {
+	// Whether a struct needs its unused fields for its size depends on which
+	// fields live code uses, and what a size guard keeps uses no field.
+	e.sizeGuarded = map[string]bool{}
+	e.sizeGuarded = e.sizeGuards(significant, e.usedByLive(e.liveSets(significant)))
+	for scope, analyses := range e.liveSets(significant) {
+		for analysis, live := range analyses {
+			for id := range live {
 				if e.decl.decls[id] == nil {
 					continue
 				}
@@ -628,6 +620,39 @@ func (e *engine) declarationStates() map[string]bool {
 		}
 	}
 	return significant
+}
+
+// liveSets returns the live declarations of each scope and analysis.
+func (e *engine) liveSets(significant map[string]bool) map[string]map[string]map[string]bool {
+	out := map[string]map[string]map[string]bool{}
+	for scope, analyses := range e.decl.reachable {
+		out[scope] = map[string]map[string]bool{}
+		for analysis, functions := range analyses {
+			seeds := maps.Clone(functions)
+			if analysis == "production" {
+				for id := range e.decl.roots[scope] {
+					seeds[id] = true
+				}
+			}
+			out[scope][analysis] = e.liveDeclarations(seeds, nil, significant)
+		}
+	}
+	return out
+}
+
+// usedByLive lists what live functions and declarations use.
+func (e *engine) usedByLive(sets map[string]map[string]map[string]bool) map[string]bool {
+	used := map[string]bool{}
+	for _, analyses := range sets {
+		for _, live := range analyses {
+			for from := range live {
+				for to := range e.decl.uses[from] {
+					used[to] = true
+				}
+			}
+		}
+	}
+	return used
 }
 
 // liveEnumGroups lists constant blocks with at least one live member.

@@ -359,7 +359,7 @@ func TestDeclarationsAndTheirSafetyRules(t *testing.T) {
 	found := findingsOf(r)
 	for name, want := range map[string]string{
 		"lib.deadConfig": "unreachable", "lib.deadLimit": "unreachable", "lib.deadTable": "unreachable",
-		"lib.settings.unused": "unreachable", "lib.settings.enabled": "never_assigned",
+		"lib.settings.unused": "unreachable", "lib.settings.enabled": "never_assigned", "lib.pair.right": "unreachable",
 		"lib.testOnlyKind": "test_only", "lib.unusedFixture": "unused_test_helper",
 	} {
 		if got := found[name]; got != want {

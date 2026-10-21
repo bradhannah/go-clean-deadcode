@@ -128,8 +128,9 @@ removal findings: exported, tagged, embedded and blank fields; and every field o
 a layout-significant struct. A struct is layout-significant when it reaches
 `encoding/binary`, `reflect` or `unsafe`, is converted to or from another struct
 type, or is built with an unkeyed composite literal; a struct field type of a
-significant struct is significant too. A struct's removable fields are also kept
-when they are all that give it a size: distinct pointers to a zero-size value may
+significant struct is significant too. A struct's unused removable fields are also kept
+when they are all that give it a size, once the fields live code uses are
+counted: distinct pointers to a zero-size value may
 compare equal, so removing them could change identity comparisons, such as a
 stack refusing the same instance twice. Fields whose type is a type parameter
 count as possibly zero-sized. Each such unused field is a `size_guard_field`
