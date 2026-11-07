@@ -64,7 +64,7 @@ func run(args []string, out, errout io.Writer) int {
 	output := fs.String("output", "", "write report outside the source root instead of stdout")
 	only := fs.String("symbol", "", "focus text findings on an exact symbol or finding ID; JSON stays complete")
 	timeout := fs.Duration("timeout", 5*time.Minute, "analysis deadline")
-	cache := fs.String("cache-dir", "", "optional report cache outside the source root")
+	cache := fs.String("cache-dir", "", "optional report cache outside the source root; prunes entries from earlier days")
 	verbose := fs.Bool("verbose", false, "phase progress on stderr")
 	profile := fs.String("cpuprofile", "", "write CPU profile outside the source root")
 	if err := fs.Parse(args[1:]); err != nil {

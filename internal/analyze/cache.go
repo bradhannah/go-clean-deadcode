@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -174,6 +176,12 @@ func CachedRun(ctx context.Context, opt Options, dir string) *report.Report {
 			if json.Unmarshal(record.Report, &r) == nil && r.Complete && r.SchemaVersion == report.SchemaVersion && r.ToolVersion == report.ToolVersion && r.InputDigest == key {
 				after, err := Snapshot(ctx, root, opt.Config)
 				if err == nil && after == key {
+					// Mark the entry as recently used so pruning keeps it.
+					now := time.Now()
+					err = errors.Join(os.Chtimes(path, now, now), pruneCache(dir, key, now))
+					if err != nil {
+						r.Diagnostics = append(r.Diagnostics, report.Diagnostic{Code: "cache_prune", Message: err.Error(), Severity: "warning"})
+					}
 					r.Metrics = report.Metrics{CacheHit: true, DurationMS: time.Since(start).Milliseconds()}
 					return &r
 				}
@@ -200,9 +208,78 @@ func CachedRun(ctx context.Context, opt Options, dir string) *report.Report {
 	}
 	if err != nil {
 		r.Diagnostics = append(r.Diagnostics, report.Diagnostic{Code: "cache_write", Message: err.Error(), Severity: "warning"})
+	} else if err = pruneCache(dir, key, time.Now()); err != nil {
+		r.Diagnostics = append(r.Diagnostics, report.Diagnostic{Code: "cache_prune", Message: err.Error(), Severity: "warning"})
 	}
 	r.Metrics.DurationMS = time.Since(start).Milliseconds()
 	return r
+}
+
+// cacheKeep bounds the entries kept from the current UTC day, including the one
+// just written or reused. Keys include the UTC date, so an entry written on an
+// earlier day can never be reused and is always removed.
+const cacheKeep = 5
+
+// pruneCache removes unreachable and least recently used report entries. It only
+// touches regular files named like entries, so other files in dir are left alone.
+func pruneCache(dir, current string, now time.Time) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	y, m, d := now.UTC().Date()
+	midnight := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	type entry struct {
+		path     string
+		modified time.Time
+	}
+	var today []entry
+	var errs []error
+	remove := func(path string) {
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !cacheEntryName(name) || name == current+".json" || !e.Type().IsRegular() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				errs = append(errs, err)
+			}
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if info.ModTime().Before(midnight) {
+			remove(path)
+			continue
+		}
+		today = append(today, entry{path, info.ModTime()})
+	}
+	sort.Slice(today, func(i, j int) bool { return today[i].modified.After(today[j].modified) })
+	for i, e := range today {
+		if i >= cacheKeep-1 {
+			remove(e.path)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// cacheEntryName reports whether name is a cache entry: a SHA-256 hex key plus ".json".
+func cacheEntryName(name string) bool {
+	key, ok := strings.CutSuffix(name, ".json")
+	if !ok || len(key) != sha256.Size*2 {
+		return false
+	}
+	for _, c := range key {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func checksum(data []byte) string { h := sha256.Sum256(data); return hex.EncodeToString(h[:]) }

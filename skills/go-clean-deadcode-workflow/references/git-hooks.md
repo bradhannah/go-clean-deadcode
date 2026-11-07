@@ -18,7 +18,9 @@ is missing rather than silently disabling itself. A complete run can still conta
 explicitly excluded modules/configurations, so the repository owns the scope policy.
 
 The optional cache directory must be outside the source. Cache hits revalidate
-inputs and can still return findings. Do not gate on the existence of an old report.
+inputs and can still return findings. The cache removes entries from earlier UTC
+days and keeps five from today, so it stays bounded. Do not gate on the existence
+of an old report.
 Test a clean case, findings, invalid config and deadline cancellation in a sandbox.
 On non-Unix hosts use an appropriate supervisor if descendant cleanup is required.
 POSIX shell templates need adaptation for repositories using another hook runtime.

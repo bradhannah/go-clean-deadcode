@@ -2,9 +2,12 @@ package analyze
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/bradhannah/go-clean-deadcode/internal/config"
 )
@@ -71,4 +74,80 @@ func TestConfigurationVariants(t *testing.T) {
 		}
 	}
 	t.Fatal("Windows declaration missing")
+}
+
+func TestPruneCacheRemovesEarlierDaysAndBoundsToday(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
+	key := func(i int) string { return fmt.Sprintf("%064x", i) }
+	put := func(name string, modified time.Time) {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("{}"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, modified, modified); err != nil {
+			t.Fatal(err)
+		}
+	}
+	yesterday := now.Add(-13 * time.Hour) // 23:00 UTC on the previous day
+	put(key(100)+".json", yesterday)
+	put("notes.txt", yesterday)
+	put(strings.Repeat("A", 64)+".json", yesterday)
+	for i := 0; i < cacheKeep+2; i++ {
+		put(key(i)+".json", now.Add(-time.Duration(i+1)*time.Minute))
+	}
+	current := key(cacheKeep + 1) // the oldest of today's entries
+	if err := pruneCache(dir, current, now); err != nil {
+		t.Fatal(err)
+	}
+	exists := func(name string) bool {
+		_, err := os.Stat(filepath.Join(dir, name))
+		return err == nil
+	}
+	if exists(key(100) + ".json") {
+		t.Fatal("entry from an earlier UTC day was kept")
+	}
+	if !exists("notes.txt") || !exists(strings.Repeat("A", 64)+".json") {
+		t.Fatal("files not named like entries must be left alone")
+	}
+	if !exists(current + ".json") {
+		t.Fatal("current entry was removed")
+	}
+	for i := 0; i < cacheKeep+1; i++ {
+		if want := i < cacheKeep-1; exists(key(i)+".json") != want {
+			t.Fatalf("entry %d kept=%v, want %v", i, !want, want)
+		}
+	}
+}
+
+func TestCachedRunPrunesUnreachableEntries(t *testing.T) {
+	root := t.TempDir()
+	cache := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/prune\n\ngo 1.27.0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\nfunc main() {}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(cache, fmt.Sprintf("%064x.json", 1))
+	if err := os.WriteFile(stale, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	c := config.Default()
+	c.Modules[0].EntryPoints = []config.EntryPoint{{Package: ".", Role: "application"}}
+	r := CachedRun(context.Background(), Options{Root: root, Config: c}, cache)
+	if !r.Complete {
+		t.Fatalf("incomplete: %+v", r.Diagnostics)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatal("unreachable entry from an earlier day was kept")
+	}
+	if _, err := os.Stat(filepath.Join(cache, r.InputDigest+".json")); err != nil {
+		t.Fatalf("new entry missing: %v", err)
+	}
 }
