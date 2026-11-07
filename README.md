@@ -45,6 +45,9 @@ All configuration paths describing source resolve against `--root`, including
 module paths. Entry-point directories and package patterns are module-relative.
 The configuration file itself can be anywhere. The analyzer writes no files into
 the target. Report, profile and cache destinations must be outside it.
+Cache keys include the UTC date, so the analyzer removes entries written on
+earlier days and keeps at most the five most recently used entries from today.
+It only removes files named like its own entries.
 
 Use `--format text` for factual findings with locations, direct references,
 bounded path witnesses, known interface obligations, exceptions and recursive

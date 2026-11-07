@@ -42,7 +42,9 @@ Commands:
 - Analysis options: `--output FILE`, `--cache-dir DIR`, `--timeout 5m`, `--verbose`,
   `--cpuprofile FILE`, `--symbol EXACT_SYMBOL_OR_FINDING_ID` (text focus only).
 
-Output/cache/profile locations must be outside the analyzed source tree. JSON is
+Output/cache/profile locations must be outside the analyzed source tree. The
+cache prunes itself: entries from earlier UTC days are removed and at most five
+from today are kept. JSON is
 one document on stdout unless `--output` is used. Progress goes to stderr.
 
 Exit 0: complete/no unresolved findings or stale exceptions. Exit 1: complete with
